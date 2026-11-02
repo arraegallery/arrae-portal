@@ -140,4 +140,18 @@ ALTER TABLE "waitlist" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "work_images" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "works" ENABLE ROW LEVEL SECURITY;
 INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('13a59cc4e4bb431ee0e74e2a0a554421c2f827e1abdf86971694a6ddb9540dbb', 1793628669461);
+
+-- 0002_sandbox
+CREATE TABLE "sandbox_items" (
+	"show_id" text NOT NULL,
+	"work_id" text NOT NULL,
+	"position" integer DEFAULT 0 NOT NULL,
+	"note" text,
+	"added_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "sandbox_items_show_id_work_id_pk" PRIMARY KEY("show_id","work_id")
+);
+ALTER TABLE "sandbox_items" ADD CONSTRAINT "sandbox_items_show_id_shows_id_fk" FOREIGN KEY ("show_id") REFERENCES "public"."shows"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "sandbox_items" ADD CONSTRAINT "sandbox_items_work_id_works_id_fk" FOREIGN KEY ("work_id") REFERENCES "public"."works"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "sandbox_items" ENABLE ROW LEVEL SECURITY;
+INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('56b6545f91f5c567e86800cae49b57c28f205767e83bc1296866aa235ecfed4b', 1793631281462);
 COMMIT;

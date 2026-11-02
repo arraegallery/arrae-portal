@@ -181,3 +181,82 @@ export async function getWaitlist() {
       })),
   }));
 }
+
+export type SandboxWork = {
+  id: string;
+  title: string;
+  artistId: string | null;
+  artistName: string;
+  year: string | null;
+  medium: string | null;
+  category: string | null;
+  price: number | null;
+  width: number | null;
+  height: number | null;
+  depth: number | null;
+  unit: string;
+  sizeAsEntered: string | null;
+  sold: boolean;
+  image: BoardImage | null;
+  /** This work's decision for the sandbox's show, if it is part of it */
+  showStatus: WorkStatus | null;
+  /** Other shows the work has been part of, for context */
+  pastShows: string[];
+  onWaitlist: boolean;
+};
+
+/** Everything the sandbox page needs: the sandbox itself, plus every work to pick from. */
+export async function getSandbox(showId: string) {
+  const [show] = await db.select().from(s.shows).where(eq(s.shows.id, showId));
+  if (!show) return null;
+  const [works, artists, images, showWorks, shows, waiting, items] = await Promise.all([
+    db.select().from(s.works),
+    db.select({ id: s.artists.id, name: s.artists.name }).from(s.artists),
+    db.select().from(s.workImages).where(eq(s.workImages.position, 0)),
+    db.select().from(s.showWorks),
+    db.select({ id: s.shows.id, name: s.shows.name }).from(s.shows),
+    db.select({ id: s.waitlist.artistId }).from(s.waitlist),
+    db.select().from(s.sandboxItems).where(eq(s.sandboxItems.showId, showId)).orderBy(asc(s.sandboxItems.position), asc(s.sandboxItems.addedAt)),
+  ]);
+  const artistName = new Map(artists.map((a) => [a.id, a.name]));
+  const showName = new Map(shows.map((x) => [x.id, x.name]));
+  const waitingSet = new Set(waiting.map((w) => w.id));
+  const imageByWork = new Map(images.map((i) => [i.workId, i]));
+  const thumbs = await signedImageUrls(works.map((w) => imageByWork.get(w.id)?.thumbPath ?? imageByWork.get(w.id)?.storagePath ?? null));
+
+  const all: SandboxWork[] = works
+    .filter((w) => !w.duplicateOf)
+    .map((w) => {
+      const i = works.indexOf(w);
+      const img = imageByWork.get(w.id);
+      const mine = showWorks.filter((x) => x.workId === w.id);
+      return {
+        id: w.id,
+        title: w.title,
+        artistId: w.artistId,
+        artistName: (w.artistId && artistName.get(w.artistId)) || "Unknown artist",
+        year: w.year,
+        medium: w.medium,
+        category: w.category,
+        price: w.priceUsd === null ? null : Number(w.priceUsd),
+        width: w.width,
+        height: w.height,
+        depth: w.depth,
+        unit: w.unit,
+        sizeAsEntered: w.sizeAsEntered,
+        sold: !!w.soldAt,
+        image: img ? { id: img.id, thumb: thumbs[i], full: null, w: img.widthPx, h: img.heightPx } : null,
+        showStatus: mine.find((x) => x.showId === showId)?.status ?? null,
+        pastShows: mine.filter((x) => x.showId !== showId).map((x) => showName.get(x.showId) ?? x.showId),
+        onWaitlist: !!w.artistId && waitingSet.has(w.artistId),
+      };
+    })
+    .sort((a, b) => a.artistName.localeCompare(b.artistName) || a.title.localeCompare(b.title));
+
+  return { show, sandbox: items.map((x) => ({ workId: x.workId, note: x.note })), works: all };
+}
+
+export async function getSandboxWorkIds(showId: string) {
+  const rows = await db.select({ id: s.sandboxItems.workId }).from(s.sandboxItems).where(eq(s.sandboxItems.showId, showId));
+  return rows.map((r) => r.id);
+}

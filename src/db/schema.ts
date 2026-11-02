@@ -141,6 +141,27 @@ export const showWorks = pgTable(
   (t) => [primaryKey({ columns: [t.showId, t.workId] })],
 );
 
+/**
+ * A curator's private sandbox for a show: any work from anywhere, freely added, removed
+ * and reordered. Nothing here is a decision; promoting a work makes it a Shortlist
+ * ("possible choice") entry in show_works. Never shown to artists.
+ */
+export const sandboxItems = pgTable(
+  "sandbox_items",
+  {
+    showId: text("show_id")
+      .notNull()
+      .references(() => shows.id, { onDelete: "cascade" }),
+    workId: text("work_id")
+      .notNull()
+      .references(() => works.id, { onDelete: "cascade" }),
+    position: integer("position").default(0).notNull(),
+    note: text("note"),
+    addedAt: timestamp("added_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.showId, t.workId] })],
+);
+
 export const waitlist = pgTable("waitlist", {
   artistId: text("artist_id")
     .primaryKey()

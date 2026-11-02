@@ -18,7 +18,7 @@ Next.js (App Router) · Postgres via Drizzle · Supabase (database, email-link s
 
 1. Copy `.env.example` to `.env.local` and fill it in.
 2. `npm install`
-3. `npm run db:migrate` to create the tables. If you can't connect to Postgres directly (for example from a cloud sandbox), paste `supabase/setup.sql` into the Supabase SQL Editor instead; it records the migrations, so `db:migrate` skips them later. Regenerate it with `npx tsx scripts/build-setup-sql.ts` after adding a migration.
+3. `npm run db:migrate` to create the tables. If you can't connect to Postgres directly (for example from a cloud sandbox), paste `supabase/setup.sql` into the Supabase SQL Editor instead; it records the migrations, so `db:migrate` skips them later. Regenerate it with `npx tsx scripts/build-setup-sql.ts` after adding a migration. On Vercel, production builds run new migrations automatically before `next build` (see `scripts/migrate-on-deploy.ts`); preview builds don't, since all environments share one database.
 4. `npm run import:airtable -- path/to/arrae_clean.json` to load the cleaned Airtable export. Safe to re-run; it never overwrites decisions made in the app.
 5. `npm run import:images -- --show volume-iv` to copy images from Airtable into Supabase Storage (needs `AIRTABLE_TOKEN`). Run it again without `--show` for everything else.
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { getShows } from "@/lib/queries";
+import { ShowsMenu } from "@/components/ShowsMenu";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +12,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-          <Link href="/admin" className="font-display text-xl tracking-wide">
-            ARRAE
+          <Link href="/admin" aria-label="ARRAE home" className="shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/arrae-logo.png" alt="ARRAE" width={858} height={310} className="h-6 w-auto" />
           </Link>
           <nav className="flex flex-wrap items-center gap-1 text-sm">
             {shows
@@ -24,19 +26,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                   {s.name}
                 </Link>
               ))}
+            <Link href="/admin/sandbox" className="rounded-md px-2 py-1 hover:bg-white">
+              Sandbox
+            </Link>
             <Link href="/admin/waitlist" className="rounded-md px-2 py-1 hover:bg-white">
               Waitlist
             </Link>
-            <details className="relative">
-              <summary className="cursor-pointer list-none rounded-md px-2 py-1 hover:bg-white">All shows ▾</summary>
-              <div className="absolute left-0 mt-1 w-80 rounded-md border border-line bg-white p-1 shadow-lg">
-                {shows.map((s) => (
-                  <Link key={s.id} href={`/admin/review/${s.id}`} className="block rounded px-2 py-1.5 hover:bg-paper">
-                    {s.name} <span className="text-xs text-muted">· {s.type}</span>
-                  </Link>
-                ))}
-              </div>
-            </details>
+<ShowsMenu shows={shows.map((s) => ({ id: s.id, name: s.name, type: s.type }))} />
           </nav>
           <span className="ml-auto text-xs text-muted">{email}</span>
         </div>
