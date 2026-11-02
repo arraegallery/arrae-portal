@@ -335,6 +335,7 @@ function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: W
       depth: work.depth === null ? "" : String(work.depth),
       unit: work.unit,
       description: work.description ?? "",
+      sold: work.sold ? "yes" : "",
     });
     setEditing(true);
   };
@@ -344,7 +345,7 @@ function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: W
       try {
         await updateWork(work.id, draft);
         const n = (v: string) => (v.trim() ? Number(v.replace(/[$,]/g, "")) : null);
-        setWork({ ...work, ...draft, price: n(draft.price), width: n(draft.width), height: n(draft.height), depth: n(draft.depth) });
+        setWork({ ...work, ...draft, sold: !!draft.sold, price: n(draft.price), width: n(draft.width), height: n(draft.height), depth: n(draft.depth) });
         setEditing(false);
       } catch (e) {
         setError((e as Error).message);
@@ -549,6 +550,10 @@ function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: W
             <label className="col-span-6 text-xs text-muted">
               Description
               <textarea value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} className="mt-0.5 h-20 w-full rounded-md bg-white px-2 py-1.5 text-sm text-ink ring-1 ring-line" />
+            </label>
+            <label className="col-span-6 flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={!!draft.sold} onChange={(e) => setDraft({ ...draft, sold: e.target.checked ? "yes" : "" })} />
+              Sold <span className="text-xs text-muted">(sold works can&rsquo;t be put forward for new shows)</span>
             </label>
             <div className="col-span-6 flex items-center gap-2">
               {error && <span className="text-xs text-rose-700">{error}</span>}

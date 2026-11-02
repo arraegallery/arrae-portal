@@ -19,7 +19,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
 
   if (!agreed)
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10">
+      <main className="mx-auto max-w-3xl px-4 pb-10 pt-20">
         <p className="text-xs uppercase tracking-[0.2em] text-muted">Step 2 of 3</p>
         <h1 className="font-display text-4xl">How we work with artists</h1>
         <p className="mt-1 text-sm text-muted">Please read this before you apply. You&rsquo;ll agree to it at the bottom.</p>
@@ -54,13 +54,13 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
   const existing = (await artistsForEmail(email))[0];
   if (!shows.length)
     return (
-      <main className="mx-auto max-w-xl px-4 py-12">
+      <main className="mx-auto max-w-xl px-4 pb-12 pt-20">
         <h1 className="font-display text-3xl">Applications are closed right now</h1>
         <p className="mt-2 text-sm text-muted">Thank you for your interest. We&rsquo;ll email {email} when the next open call starts.</p>
       </main>
     );
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10">
+    <main className="mx-auto max-w-3xl px-4 pb-10 pt-20">
       <p className="text-xs uppercase tracking-[0.2em] text-muted">Step 3 of 3</p>
       <h1 className="font-display text-4xl">Your application</h1>
       <p className="mt-1 text-sm text-muted">

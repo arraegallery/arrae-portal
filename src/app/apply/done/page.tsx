@@ -3,7 +3,7 @@ import Link from "next/link";
 export default async function DonePage({ searchParams }: { searchParams: Promise<{ show?: string }> }) {
   const { show } = await searchParams;
   return (
-    <main className="mx-auto max-w-xl px-4 py-16">
+    <main className="mx-auto max-w-xl px-4 pb-16 pt-24">
       <h1 className="font-display text-4xl">Thank you for applying</h1>
       <p className="mt-3 text-sm leading-relaxed text-muted">
         We received your application{show ? ` for ${show}` : ""}, and we&rsquo;ve emailed you a copy. We review every application carefully; decisions are made a few weeks before the
