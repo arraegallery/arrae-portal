@@ -1,13 +1,12 @@
 "use server";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema as s } from "@/db";
 import { requireOwner } from "@/lib/team";
 import { notifyEmail, portalUrl } from "@/lib/notify";
-import { cleanSignature, getAgreementTemplate, getGallerySigner, sha256 } from "@/lib/agreement";
-
-const rand = () => crypto.randomUUID().replace(/-/g, "").slice(0, 14);
+import { cleanSignature, createAgreement, type AutoMode } from "@/lib/agreement";
+import { remindToSign } from "@/lib/agreement-reminders";
 
 function refresh(artistId?: string) {
   revalidatePath("/admin/agreements");
@@ -21,20 +20,7 @@ function refresh(artistId?: string) {
  */
 export async function sendAgreement(artistId: string) {
   const actor = await requireOwner();
-  const [artist] = await db.select().from(s.artists).where(eq(s.artists.id, artistId));
-  if (!artist) throw new Error("That artist no longer exists");
-  const [signed] = await db
-    .select({ id: s.agreements.id })
-    .from(s.agreements)
-    .where(and(eq(s.agreements.artistId, artistId), isNull(s.agreements.voidedAt), isNull(s.agreements.signedAt)));
-  // Only one open request at a time: a new send replaces an unsigned one.
-  if (signed) await db.update(s.agreements).set({ voidedAt: new Date() }).where(eq(s.agreements.id, signed.id));
-
-  const template = await getAgreementTemplate();
-  const body = template.text.replaceAll("{{artist}}", artist.name);
-  const gallery = await getGallerySigner();
-  const id = `agr_${rand()}`;
-  await db.insert(s.agreements).values({ id, artistId, body, bodyHash: sha256(body), sentBy: actor, galleryName: gallery.name, galleryTitle: gallery.title, gallerySignature: gallery.signature });
+  const { id, artist } = await createAgreement(artistId, actor);
 
   const message = `Welcome to ARRAE! Your Artist Partnership Agreement is ready to sign. Open your studio and choose "Read and sign". It takes a couple of minutes, and you can download a signed copy right after.`;
   await db.insert(s.artistMessages).values({ artistId, sender: "arrae", body: message, actor, readByArraeAt: new Date() });
@@ -81,5 +67,29 @@ export async function saveGallerySigner(input: { name: string; title: string; si
   if (!name) throw new Error("Add the name that signs for ARRAE");
   const value = JSON.stringify({ name, title: title || "Founder", signature: cleanSignature(input.signature) });
   await db.insert(s.appSettings).values({ key: "agreement_gallery_signer", value }).onConflictDoUpdate({ target: s.appSettings.key, set: { value } });
+  refresh();
+}
+
+/** Emails a reminder now to one artist, or to everyone still waiting. */
+export async function remindAgreements(ids: string[]) {
+  const actor = await requireOwner();
+  const open = ids.length
+    ? await db.select({ id: s.agreements.id }).from(s.agreements).where(and(inArray(s.agreements.id, ids), isNull(s.agreements.signedAt), isNull(s.agreements.voidedAt)))
+    : [];
+  let sent = 0;
+  for (const a of open) if (await remindToSign(a.id, actor)) sent++;
+  refresh();
+  return { sent, tried: open.length };
+}
+
+/** First-sign-in and automatic reminder settings. */
+export async function saveAgreementAuto(input: { mode: AutoMode; reminders: boolean }) {
+  await requireOwner();
+  const mode = input.mode === "off" || input.mode === "all" ? input.mode : "unsigned";
+  for (const [key, value] of [
+    ["agreement_auto", mode],
+    ["agreement_reminders", input.reminders ? "on" : "off"],
+  ])
+    await db.insert(s.appSettings).values({ key, value }).onConflictDoUpdate({ target: s.appSettings.key, set: { value } });
   refresh();
 }

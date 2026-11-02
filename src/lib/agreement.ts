@@ -204,7 +204,7 @@ export async function renderAgreementPdf(a: Agreement): Promise<Uint8Array> {
   row("Document ID", a.id);
   row("Document fingerprint (SHA-256 of the agreement text)", a.bodyHash);
   y -= 8;
-  row("Sent and signed for ARRAE Gallery by", `${a.galleryName}, ${a.galleryTitle} (${a.sentBy})`);
+  row("Sent and signed for ARRAE Gallery by", `${a.galleryName}, ${a.galleryTitle}${a.sentBy.includes("@") ? ` (${a.sentBy})` : " (sent automatically when the Artist first signed in)"}`);
   row("Sent", NY(a.sentAt));
   y -= 8;
   row("Signed by the Artist", a.artistName ?? "");
@@ -224,4 +224,64 @@ export async function currentAgreement(artistIds: string[]) {
   if (!artistIds.length) return null;
   const rows = await db.select().from(s.agreements).where(and(inArray(s.agreements.artistId, artistIds), isNull(s.agreements.voidedAt))).orderBy(desc(s.agreements.sentAt)).limit(1);
   return rows[0] ?? null;
+}
+
+// ---- Sending, first sign-in, reminders ----
+
+const rand = () => crypto.randomUUID().replace(/-/g, "").slice(0, 14);
+
+/** Freezes today's wording with the artist's name and signs it for ARRAE. Cancels any older unsigned copy. */
+export async function createAgreement(artistId: string, sentBy: string) {
+  const [artist] = await db.select().from(s.artists).where(eq(s.artists.id, artistId));
+  if (!artist) throw new Error("That artist no longer exists");
+  await db
+    .update(s.agreements)
+    .set({ voidedAt: new Date() })
+    .where(and(eq(s.agreements.artistId, artistId), isNull(s.agreements.voidedAt), isNull(s.agreements.signedAt)));
+  const body = (await getAgreementTemplate()).text.replaceAll("{{artist}}", artist.name);
+  const gallery = await getGallerySigner();
+  const id = `agr_${rand()}`;
+  await db.insert(s.agreements).values({ id, artistId, body, bodyHash: sha256(body), sentBy, galleryName: gallery.name, galleryTitle: gallery.title, gallerySignature: gallery.signature });
+  return { id, artist };
+}
+
+/**
+ * Who is asked to sign the first time they open their studio, without ARRAE sending it by hand:
+ * "off", "unsigned" (selected artists not yet marked signed) or "all" (every selected artist, even
+ * those who signed an older copy outside the portal).
+ */
+export type AutoMode = "off" | "unsigned" | "all";
+export async function getAgreementAuto(): Promise<{ mode: AutoMode; reminders: boolean }> {
+  const rows = await db.select().from(s.appSettings).where(inArray(s.appSettings.key, ["agreement_auto", "agreement_reminders"]));
+  const get = (k: string) => rows.find((r) => r.key === k)?.value;
+  const mode = get("agreement_auto");
+  return { mode: mode === "off" || mode === "all" ? mode : "unsigned", reminders: get("agreement_reminders") !== "off" };
+}
+
+/** Called when an artist opens their studio: sets up their agreement if the auto setting covers them. */
+export async function offerAgreementOnSignIn(artistIds: string[]) {
+  if (!artistIds.length || (await currentAgreement(artistIds))) return;
+  const { mode } = await getAgreementAuto();
+  if (mode === "off") return;
+  const [selected] = await db
+    .select({ id: s.applications.artistId })
+    .from(s.applications)
+    .where(and(inArray(s.applications.artistId, artistIds), eq(s.applications.status, "Selected")))
+    .limit(1);
+  if (!selected) return;
+  const [artist] = await db.select({ onboarding: s.artists.onboarding }).from(s.artists).where(eq(s.artists.id, selected.id));
+  if (mode === "unsigned" && (artist?.onboarding as { agreement?: boolean } | undefined)?.agreement) return;
+  const { id } = await createAgreement(selected.id, "first sign-in");
+  await db.insert(s.activity).values({ artistId: selected.id, kind: "note", body: "Asked to sign the Partnership Agreement on first sign-in", actor: "portal" });
+  return id;
+}
+
+/** Reminder schedule: 3 days after sending, then every 7 days, at most 3 reminders. */
+export const REMINDER = { firstAfterDays: 3, everyDays: 7, max: 3 };
+
+export function reminderDue(a: { signedAt: Date | null; voidedAt: Date | null; sentAt: Date; remindersSent: number; lastRemindedAt: Date | null }, now = new Date()) {
+  if (a.signedAt || a.voidedAt || a.remindersSent >= REMINDER.max) return false;
+  const day = 864e5;
+  if (!a.lastRemindedAt) return now.getTime() - a.sentAt.getTime() >= REMINDER.firstAfterDays * day;
+  return now.getTime() - a.lastRemindedAt.getTime() >= REMINDER.everyDays * day;
 }

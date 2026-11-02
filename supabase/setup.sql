@@ -291,4 +291,9 @@ CREATE TABLE "agreements" (
 ALTER TABLE "agreements" ADD CONSTRAINT "agreements_artist_id_artists_id_fk" FOREIGN KEY ("artist_id") REFERENCES "public"."artists"("id") ON DELETE cascade ON UPDATE no action;
 ALTER TABLE "agreements" ENABLE ROW LEVEL SECURITY;
 INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('57d8370dd5fcdaa6052c08709857635b4bfa9fc637ea8f15e86662627acb54a3', 1793643264318);
+
+-- 0008_agreement_reminders
+ALTER TABLE "agreements" ADD COLUMN "reminders_sent" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "agreements" ADD COLUMN "last_reminded_at" timestamp with time zone;
+INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('016c83dc8908f791444162cfabcfa09bc7e235db04c94e4b3f56c21071a51fcc', 1793645087514);
 COMMIT;

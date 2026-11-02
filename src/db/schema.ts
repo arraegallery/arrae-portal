@@ -323,4 +323,6 @@ export const agreements = pgTable("agreements", {
   signedAt: timestamp("signed_at", { withTimezone: true }),
   pdfPath: text("pdf_path"),
   voidedAt: timestamp("voided_at", { withTimezone: true }),
+  remindersSent: integer("reminders_sent").default(0).notNull(),
+  lastRemindedAt: timestamp("last_reminded_at", { withTimezone: true }),
 });
