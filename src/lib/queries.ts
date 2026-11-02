@@ -341,3 +341,45 @@ export async function getArtistDirectory() {
   const selected = new Set(apps.filter((a) => a.status === "Selected").map((a) => a.artistId));
   return artists.map((a) => ({ ...a, works: count.get(a.id) ?? 0, everSelected: selected.has(a.id), hasArraeBio: !!a.arraeBio }));
 }
+
+/** Everyone we could email, with what they've applied to, for the Messages page. */
+export async function getMessageRecipients() {
+  const [artists, apps, works, waiting, shows, history] = await Promise.all([
+    db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email }).from(s.artists).orderBy(asc(s.artists.name)),
+    db.select({ artistId: s.applications.artistId, showId: s.applications.showId, status: s.applications.status }).from(s.applications),
+    db
+      .select({ artistId: s.works.artistId, showId: s.showWorks.showId, status: s.showWorks.status })
+      .from(s.showWorks)
+      .innerJoin(s.works, eq(s.works.id, s.showWorks.workId)),
+    db.select({ id: s.waitlist.artistId }).from(s.waitlist),
+    db.select({ id: s.shows.id, name: s.shows.name, type: s.shows.type, opensOn: s.shows.opensOn }).from(s.shows).orderBy(desc(s.shows.opensOn), asc(s.shows.name)),
+    db.select().from(s.activity).where(eq(s.activity.kind, "email-batch")).orderBy(desc(s.activity.createdAt)).limit(20),
+  ]);
+  const waitingSet = new Set(waiting.map((w) => w.id));
+  // Per artist and show: did they apply, and were they (or any of their works) selected?
+  const perArtist = new Map<string, Map<string, { applied: boolean; selected: boolean }>>();
+  const mark = (artistId: string | null, showId: string | null, selected: boolean) => {
+    if (!artistId || !showId) return;
+    const m = perArtist.get(artistId) ?? new Map();
+    const cur = m.get(showId) ?? { applied: false, selected: false };
+    m.set(showId, { applied: true, selected: cur.selected || selected });
+    perArtist.set(artistId, m);
+  };
+  for (const a of apps) mark(a.artistId, a.showId, a.status === "Selected");
+  for (const w of works) mark(w.artistId, w.showId, w.status === "Selected");
+  return {
+    shows,
+    history: history.map((h) => ({ id: h.id, body: h.body, actor: h.actor, at: h.createdAt.toISOString() })),
+    artists: artists.map((a) => {
+      const m = perArtist.get(a.id) ?? new Map();
+      const entries = [...m.entries()];
+      return {
+        ...a,
+        roster: entries.some(([, v]) => v.selected),
+        onWaitlist: waitingSet.has(a.id),
+        appliedTo: entries.map(([k]) => k),
+        selectedFor: entries.filter(([, v]) => v.selected).map(([k]) => k),
+      };
+    }),
+  };
+}

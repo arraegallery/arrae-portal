@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db, schema as s } from "@/db";
 import { requireAdmin } from "@/lib/auth";
 import { APPLICATION_STATUSES, WORK_STATUSES, type ApplicationStatus, type WorkStatus } from "@/lib/status";
+import { personalize, renderEmail, renderText, sendEmails, type EmailContent } from "@/lib/email";
 
 async function log(entry: { artistId?: string | null; workId?: string | null; showId?: string | null; kind: string; body: string; actor: string }) {
   await db.insert(s.activity).values(entry);
@@ -311,4 +312,58 @@ export async function updateWork(
   const [w] = await db.update(s.works).set(set).where(eq(s.works.id, workId)).returning({ artistId: s.works.artistId, title: s.works.title });
   await log({ artistId: w?.artistId, workId, kind: "edit", body: `"${w?.title}" edited`, actor });
   revalidatePath("/admin", "layout");
+}
+
+// ---- Messages to artists ----
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function cleanMessage(m: EmailContent): EmailContent {
+  const subject = m.subject?.trim().slice(0, 200) ?? "";
+  const body = m.body?.trim().slice(0, 20000) ?? "";
+  if (!subject) throw new Error("Add a subject");
+  if (!body) throw new Error("Write a message");
+  return { subject, body, heading: m.heading?.trim().slice(0, 200), buttonLabel: m.buttonLabel?.trim().slice(0, 60), buttonUrl: m.buttonUrl?.trim().slice(0, 1000) };
+}
+
+function compose(m: EmailContent, name: string) {
+  const p: EmailContent = { ...m, subject: personalize(m.subject, name), heading: m.heading && personalize(m.heading, name), body: personalize(m.body, name) };
+  return { subject: p.subject, html: renderEmail(p), text: renderText(p) };
+}
+
+/** Send the message to the signed-in admin only, addressed as the first chosen artist. */
+export async function sendTestMessage(message: EmailContent, sampleArtistId?: string) {
+  const actor = await requireAdmin();
+  const m = cleanMessage(message);
+  const [sample] = sampleArtistId ? await db.select({ name: s.artists.name }).from(s.artists).where(eq(s.artists.id, sampleArtistId)) : [];
+  const out = compose(m, sample?.name ?? "Artist");
+  const { failures } = await sendEmails([{ to: actor, ...out, subject: `[Test] ${out.subject}` }]);
+  if (failures.length) throw new Error(`Test didn't send: ${failures[0].error}`);
+  return actor;
+}
+
+/** Send one separate email to each chosen artist, so nobody sees anyone else's address. */
+export async function sendMessageToArtists(artistIds: string[], message: EmailContent) {
+  const actor = await requireAdmin();
+  const m = cleanMessage(message);
+  const ids = [...new Set(artistIds)];
+  if (!ids.length) throw new Error("Choose at least one artist");
+  if (ids.length > 1000) throw new Error("That's more than 1,000 artists; send in smaller groups");
+  const rows = await db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email }).from(s.artists).where(inArray(s.artists.id, ids));
+  // One email per address, even if two artist records share it.
+  const seen = new Set<string>();
+  const recipients = rows.filter((r) => {
+    const e = r.email.trim().toLowerCase();
+    if (!EMAIL_RE.test(e) || seen.has(e)) return false;
+    seen.add(e);
+    return true;
+  });
+  const skipped = rows.filter((r) => !recipients.includes(r)).map((r) => r.name);
+  const { sent, failures } = await sendEmails(recipients.map((r) => ({ to: r.email.trim(), ...compose(m, r.name) })));
+  const failed = new Set(failures.map((f) => f.to.toLowerCase()));
+  const delivered = recipients.filter((r) => !failed.has(r.email.trim().toLowerCase()));
+  if (delivered.length) await db.insert(s.activity).values(delivered.map((r) => ({ artistId: r.id, kind: "email", body: `Email sent: "${m.subject}"`, actor })));
+  await log({ kind: "email-batch", body: `"${m.subject}" sent to ${sent} artist${sent === 1 ? "" : "s"}${failures.length ? `, ${failures.length} failed` : ""}`, actor });
+  revalidatePath("/admin/messages");
+  return { sent, failed: failures.length, skipped, firstError: failures[0]?.error ?? null };
 }

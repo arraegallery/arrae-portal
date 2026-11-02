@@ -35,6 +35,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <Link href="/admin/waitlist" className="rounded-md px-2 py-1 hover:bg-white">
               Waitlist
             </Link>
+            <Link href="/admin/messages" className="rounded-md px-2 py-1 hover:bg-white">
+              Messages
+            </Link>
 <ShowsMenu shows={shows.map((s) => ({ id: s.id, name: s.name, type: s.type }))} />
           </nav>
           <span className="ml-auto text-xs text-muted">{email}</span>
