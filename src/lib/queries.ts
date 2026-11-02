@@ -287,12 +287,13 @@ export async function getArtistList() {
 export async function getArtistProfile(artistId: string) {
   const [artist] = await db.select().from(s.artists).where(eq(s.artists.id, artistId));
   if (!artist) return null;
-  const [works, apps, shows, notes, waiting] = await Promise.all([
+  const [works, apps, shows, notes, waiting, changes] = await Promise.all([
     db.select().from(s.works).where(eq(s.works.artistId, artistId)).orderBy(desc(s.works.submittedOn)),
     db.select().from(s.applications).where(eq(s.applications.artistId, artistId)).orderBy(desc(s.applications.submittedOn)),
-    db.select({ id: s.shows.id, name: s.shows.name }).from(s.shows),
+    db.select({ id: s.shows.id, name: s.shows.name, type: s.shows.type, opensOn: s.shows.opensOn, open: s.shows.openForSubmissions }).from(s.shows).orderBy(desc(s.shows.opensOn)),
     db.select().from(s.activity).where(eq(s.activity.artistId, artistId)).orderBy(desc(s.activity.createdAt)),
     db.select().from(s.waitlist).where(eq(s.waitlist.artistId, artistId)),
+    db.select().from(s.workChanges).where(eq(s.workChanges.artistId, artistId)).orderBy(desc(s.workChanges.createdAt)),
   ]);
   const workIds = works.map((w) => w.id);
   const [images, showWorks] = workIds.length
@@ -304,8 +305,20 @@ export async function getArtistProfile(artistId: string) {
   const showName = new Map(shows.map((x) => [x.id, x.name]));
   const thumbs = await signedImageUrls(images.map((i) => i.thumbPath ?? i.storagePath));
   const imageByWork = new Map(images.map((img, i) => [img.workId, { id: img.id, thumb: thumbs[i], full: null, w: img.widthPx, h: img.heightPx } as BoardImage]));
+  // Which shows this artist has been part of: selected works or a Selected application.
+  const showHistory = shows
+    .map((sh) => {
+      const app = apps.find((a) => a.showId === sh.id);
+      const inShow = showWorks.filter((x) => x.showId === sh.id);
+      const selectedWorks = inShow.filter((x) => x.status === "Selected").length;
+      return { showId: sh.id, name: sh.name, type: sh.type, opensOn: sh.opensOn, status: app?.status ?? null, works: inShow.length, selectedWorks, exhibited: selectedWorks > 0 || app?.status === "Selected" };
+    })
+    .filter((h) => h.status || h.works);
   return {
     artist,
+    shows: shows.map((x) => ({ id: x.id, name: x.name, type: x.type, open: x.open })),
+    showHistory,
+    changes: changes.map((c) => ({ id: c.id, workId: c.workId, field: c.field, oldValue: c.oldValue, newValue: c.newValue, actor: c.actor, role: c.actorRole, at: c.createdAt.toISOString() })),
     onWaitlist: waiting.length > 0,
     applications: apps.map((a) => ({ id: a.id, show: a.showId ? (showName.get(a.showId) ?? a.showId) : "No show", showId: a.showId, status: a.status, submittedOn: a.submittedOn })),
     works: works.map((w) => ({
