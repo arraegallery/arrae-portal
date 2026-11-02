@@ -1,9 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { fillBiosFromShopify } from "../actions";
+import { useState } from "react";
 
 type Row = { id: string; name: string; email: string; works: number; everSelected: boolean; hasArraeBio: boolean; lastSeen: string | null };
 
@@ -13,25 +11,6 @@ export function ArtistDirectory({ artists, owner }: { artists: Row[]; owner: boo
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"all" | "roster" | "needs-bio">("all");
   const [bySeen, setBySeen] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
-  const [pending, start] = useTransition();
-  const router = useRouter();
-  const fill = () =>
-    start(async () => {
-      setResult(null);
-      try {
-        const r = await fillBiosFromShopify();
-        const parts = [
-          r.filled.length ? `Filled ${r.filled.length} ARRAE bio${r.filled.length === 1 ? "" : "s"} from Shopify: ${r.filled.join(", ")}.` : "No empty ARRAE bios had a matching Shopify collection.",
-          r.kept ? `${r.kept} already had a bio and were left alone.` : "",
-          r.unmatched.length ? `Collections with no matching artist: ${r.unmatched.join(", ")}.` : "",
-        ];
-        setResult({ ok: true, text: parts.filter(Boolean).join(" ") });
-        router.refresh();
-      } catch (e) {
-        setResult({ ok: false, text: (e as Error).message });
-      }
-    });
   const needle = q.trim().toLowerCase();
   const shown = artists.filter(
     (a) =>
@@ -61,15 +40,9 @@ export function ArtistDirectory({ artists, owner }: { artists: Row[]; owner: boo
           <button onClick={() => setBySeen(!bySeen)} className={`rounded-full px-3 py-1 ring-1 ${bySeen ? "bg-ink text-white ring-ink" : "bg-white ring-line"}`} title="Sort by the last time each artist signed in">
             Recently signed in
           </button>
-          {owner && (
-            <button onClick={fill} disabled={pending} className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line disabled:opacity-50" title="Copies each artist collection's description from arraegallery.com into ARRAE bios that are still empty">
-              {pending ? "Filling…" : "Fill bios from Shopify"}
-            </button>
-          )}
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or email" className="w-60 rounded-md bg-white px-3 py-1.5 ring-1 ring-line" />
         </div>
       </section>
-      {result && <p className={`mb-3 rounded-md p-3 text-sm ring-1 ${result.ok ? "bg-emerald-50 text-emerald-900 ring-emerald-200" : "bg-rose-50 text-rose-900 ring-rose-200"}`}>{result.text}</p>}
       <p className="mb-2 text-sm text-muted">{shown.length} artists</p>
       <ul className="divide-y divide-line rounded-lg bg-white ring-1 ring-line">
         {shown.map((a) => (
