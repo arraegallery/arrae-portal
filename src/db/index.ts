@@ -6,22 +6,13 @@ const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is not set");
 
 // prepare: false keeps this compatible with Supabase's transaction pooler.
-// On Vercel a warm function can be frozen between requests, which leaves pooled
-// sockets dead without postgres-js noticing; a query sent on one then waits until
-// the platform kills the request. Short idle and lifetime limits retire sockets
-// before that happens, and connect_timeout fails fast instead of hanging.
-// max_pipeline: 1 stops postgres-js from stacking extra queries onto a busy
-// connection when a page runs more queries at once than the pool has sockets.
-// Supabase's transaction pooler can stall on those pipelined queries, and a
-// stalled socket then blocks every later request on the same server.
+// Short idle and lifetime limits retire sockets before a frozen Vercel function
+// can reuse a dead one, and connect_timeout fails fast instead of hanging.
 const globalForDb = globalThis as unknown as { pg?: ReturnType<typeof postgres> };
 const client =
   globalForDb.pg ??
   postgres(url, {
     prepare: false,
-    // One socket per server. Live timing (/admin/health) showed queries run one at a
-    // time answer in 5-40ms, but opening extra sockets in parallel through the
-    // pooler never answers, so queries queue on a single connection instead.
     max: 1,
     ...({ max_pipeline: 1 } as object), // supported at runtime, missing from the types
     idle_timeout: 5,
@@ -30,5 +21,40 @@ const client =
   });
 globalForDb.pg = client;
 
-export const db = drizzle(client, { schema });
+// One query at a time, each sent only after the previous one has answered.
+// Live timing (/admin/health) showed queries issued one after another answer in
+// 5-40ms on Vercel, while queries handed to postgres-js all at once never
+// answered, even on a single connection. So every query drizzle sends goes
+// through this gate, with a time limit so a stuck one can't block the rest.
+let tail: Promise<unknown> = Promise.resolve();
+function serial<T>(run: () => PromiseLike<T>): Promise<T> {
+  const result = tail.then(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    return Promise.race([
+      Promise.resolve(run()).finally(() => clearTimeout(timer)),
+      new Promise<never>((_, no) => {
+        timer = setTimeout(() => no(new Error("The database didn't answer within 20 seconds")), 20_000);
+      }),
+    ]);
+  });
+  tail = result.catch(() => undefined);
+  return result;
+}
+
+type Unsafe = typeof client.unsafe;
+const gated = new Proxy(client, {
+  get(target, prop, receiver) {
+    if (prop !== "unsafe") return Reflect.get(target, prop, receiver);
+    return (...args: Parameters<Unsafe>) => {
+      // drizzle either awaits the query or calls .values() on it, then awaits.
+      const make = () => target.unsafe(...args);
+      return {
+        values: () => serial(() => make().values()),
+        then: <A, B>(ok?: (v: Awaited<ReturnType<Unsafe>>) => A, bad?: (e: unknown) => B) => serial(() => make()).then(ok, bad),
+      };
+    };
+  },
+});
+
+export const db = drizzle(gated, { schema });
 export { schema };
