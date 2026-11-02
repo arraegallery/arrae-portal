@@ -275,6 +275,19 @@ export const bookings = pgTable("bookings", {
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
 });
 
+/** Someone who started an application on /apply: email first, then terms, then the form. */
+export const applicantSignups = pgTable("applicant_signups", {
+  email: text("email").primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  lastLinkAt: timestamp("last_link_at", { withTimezone: true }),
+  termsAgreedAt: timestamp("terms_agreed_at", { withTimezone: true }),
+  termsVersion: text("terms_version"),
+  draftId: text("draft_id"),
+  showId: text("show_id").references(() => shows.id, { onDelete: "set null" }),
+  artistId: text("artist_id").references(() => artists.id, { onDelete: "set null" }),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }),
+});
+
 /** Small key/value settings, such as the private calendar feed token. */
 export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),

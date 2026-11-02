@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { ShowTabs } from "@/components/ShowTabs";
-import { addNote, addToSandbox, moveWorksToShow, reassignWorks, removeFromSandbox, removeWorksFromShow, requestBetterPhotos, setApplicationStatus, setWorkStatus } from "../../actions";
+import { addNote, addToSandbox, addWorksToShow, moveWorksToShow, reassignWorks, removeFromSandbox, removeWorksFromShow, requestBetterPhotos, setApplicationStatus, setWorkStatus } from "../../actions";
 
 const PHOTO_NOTE = "Thank you for applying! Could you send us better photos of these works? Straight on, in good natural light, filling the frame, with no glare or background. A detail shot is welcome too.";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
@@ -324,6 +324,17 @@ export function ReviewBoard({
               <p className="mt-2 text-xs text-muted">Artist will see: “{artistFacingWork(lightboxWork.status, show.name)}”</p>
               <p className="mt-1 text-xs text-muted">Chose the wrong one? Click it again to undo.</p>
             </div>
+            <WorkShows
+              key={`shows-${lightboxWork.id}`}
+              workId={lightboxWork.id}
+              showId={show.id}
+              showName={show.name}
+              shows={shows}
+              onMoved={() => {
+                setEntries((all) => all.map((e) => (e.artist.id === lightbox.artist.id ? { ...e, works: e.works.filter((w) => w.id !== lightboxWork.id) } : e)));
+                setOpenWork(null);
+              }}
+            />
             <NotesBox
               key={lightboxWork.id}
               title="Internal notes on this work"
@@ -784,5 +795,53 @@ function FixSubmission({
       )}
       {error && <p className="mt-2 text-xs text-rose-700">{error}</p>}
     </section>
+  );
+}
+
+/** Move one work to another show, or add it to another show as well (shown in more than one). */
+function WorkShows({ workId, showId, showName, shows, onMoved }: { workId: string; showId: string; showName: string; shows: { id: string; name: string }[]; onMoved: () => void }) {
+  const [to, setTo] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pending, start] = useTransition();
+  const others = shows.filter((x) => x.id !== showId);
+  const go = (keep: boolean) =>
+    start(async () => {
+      setMsg(null);
+      const name = shows.find((x) => x.id === to)?.name ?? to;
+      try {
+        if (keep) {
+          await addWorksToShow([workId], to);
+          setMsg({ ok: true, text: `Added to ${name}. It stays in ${showName} too.` });
+          setTo("");
+        } else {
+          await moveWorksToShow(showId, to, [workId]);
+          onMoved();
+        }
+      } catch (e) {
+        setMsg({ ok: false, text: (e as Error).message });
+      }
+    });
+  return (
+    <div className="mt-6">
+      <p className="mb-2 text-xs uppercase tracking-wider text-muted">Show</p>
+      <select value={to} onChange={(e) => setTo(e.target.value)} className="w-full rounded-md bg-white px-2 py-1.5 text-sm ring-1 ring-line">
+        <option value="">Choose another show…</option>
+        {others.map((x) => (
+          <option key={x.id} value={x.id}>
+            {x.name}
+          </option>
+        ))}
+      </select>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button disabled={!to || pending} onClick={() => go(false)} className="rounded-md bg-ink px-3 py-1.5 text-sm text-white disabled:opacity-40">
+          Move it there
+        </button>
+        <button disabled={!to || pending} onClick={() => go(true)} className="rounded-md px-3 py-1.5 text-sm ring-1 ring-line disabled:opacity-40">
+          Add it there too
+        </button>
+      </div>
+      <p className="mt-1 text-xs text-muted">Move takes it out of {showName} and keeps its decision. Add keeps it here and puts it in the other show as well.</p>
+      {msg && <p className={`mt-1 text-xs ${msg.ok ? "text-emerald-800" : "text-rose-700"}`}>{msg.text}</p>}
+    </div>
   );
 }

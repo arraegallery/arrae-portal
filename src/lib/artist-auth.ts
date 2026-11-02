@@ -35,6 +35,8 @@ export async function requireArtist() {
   const records = await artistsForEmail(email);
   if (!records.length) {
     if (await teamRoleFor(email)) redirect("/admin");
+    const [signup] = await db.select({ email: s.applicantSignups.email }).from(s.applicantSignups).where(eq(s.applicantSignups.email, email));
+    if (signup) redirect("/apply/start");
     redirect("/login?error=no-artist");
   }
   return { email, artist: records[0], artistIds: records.map((r) => r.id) };

@@ -43,6 +43,13 @@
       "when": 1793639701625,
       "tag": "0005_logistics_team",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793641093622,
+      "tag": "0006_applications",
+      "breakpoints": true
     }
   ]
 }

@@ -250,4 +250,21 @@ ALTER TABLE "app_settings" ENABLE ROW LEVEL SECURITY;
 CREATE INDEX "bookings_window_idx" ON "bookings" ("window_id");
 UPDATE "show_works" sw SET "received_at" = w."received_at" FROM "works" w WHERE w."id" = sw."work_id" AND w."received_at" IS NOT NULL;
 INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('f4bff4a00a331eab4be99befda7faa8f23b97bd2a900fd1f3f1e075c4b45c01a', 1793639701625);
+
+-- 0006_applications
+CREATE TABLE "applicant_signups" (
+	"email" text PRIMARY KEY NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"last_link_at" timestamp with time zone,
+	"terms_agreed_at" timestamp with time zone,
+	"terms_version" text,
+	"draft_id" text,
+	"show_id" text,
+	"artist_id" text,
+	"submitted_at" timestamp with time zone
+);
+ALTER TABLE "applicant_signups" ADD CONSTRAINT "applicant_signups_show_id_shows_id_fk" FOREIGN KEY ("show_id") REFERENCES "public"."shows"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "applicant_signups" ADD CONSTRAINT "applicant_signups_artist_id_artists_id_fk" FOREIGN KEY ("artist_id") REFERENCES "public"."artists"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "applicant_signups" ENABLE ROW LEVEL SECURITY;
+INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('9437b06600c5af4c4cd915bb7ce889459686a9f9202793819ecf6a3be47ee39d', 1793641093622);
 COMMIT;
