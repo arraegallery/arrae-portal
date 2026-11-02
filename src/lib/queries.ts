@@ -210,7 +210,24 @@ export async function getSandbox(showId: string) {
   const [show] = await db.select().from(s.shows).where(eq(s.shows.id, showId));
   if (!show) return null;
   const [works, artists, images, showWorks, shows, waiting, items] = await Promise.all([
-    db.select().from(s.works),
+    db
+      .select({
+        id: s.works.id,
+        title: s.works.title,
+        artistId: s.works.artistId,
+        year: s.works.year,
+        medium: s.works.medium,
+        category: s.works.category,
+        priceUsd: s.works.priceUsd,
+        width: s.works.width,
+        height: s.works.height,
+        depth: s.works.depth,
+        unit: s.works.unit,
+        sizeAsEntered: s.works.sizeAsEntered,
+        soldAt: s.works.soldAt,
+        duplicateOf: s.works.duplicateOf,
+      })
+      .from(s.works),
     db.select({ id: s.artists.id, name: s.artists.name }).from(s.artists),
     db.select().from(s.workImages).where(eq(s.workImages.position, 0)),
     db.select().from(s.showWorks),
@@ -224,10 +241,11 @@ export async function getSandbox(showId: string) {
   const imageByWork = new Map(images.map((i) => [i.workId, i]));
   const thumbs = await signedImageUrls(works.map((w) => imageByWork.get(w.id)?.thumbPath ?? imageByWork.get(w.id)?.storagePath ?? null));
 
+  const indexOfWork = new Map(works.map((w, i) => [w.id, i]));
   const all: SandboxWork[] = works
     .filter((w) => !w.duplicateOf)
     .map((w) => {
-      const i = works.indexOf(w);
+      const i = indexOfWork.get(w.id)!;
       const img = imageByWork.get(w.id);
       const mine = showWorks.filter((x) => x.workId === w.id);
       return {
@@ -263,4 +281,105 @@ export async function getSandboxWorkIds(showId: string) {
 
 export async function getArtistList() {
   return db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email }).from(s.artists).orderBy(asc(s.artists.name));
+}
+
+/** Everything about one artist, for their profile page. */
+export async function getArtistProfile(artistId: string) {
+  const [artist] = await db.select().from(s.artists).where(eq(s.artists.id, artistId));
+  if (!artist) return null;
+  const [works, apps, shows, notes, waiting] = await Promise.all([
+    db.select().from(s.works).where(eq(s.works.artistId, artistId)).orderBy(desc(s.works.submittedOn)),
+    db.select().from(s.applications).where(eq(s.applications.artistId, artistId)).orderBy(desc(s.applications.submittedOn)),
+    db.select({ id: s.shows.id, name: s.shows.name }).from(s.shows),
+    db.select().from(s.activity).where(eq(s.activity.artistId, artistId)).orderBy(desc(s.activity.createdAt)),
+    db.select().from(s.waitlist).where(eq(s.waitlist.artistId, artistId)),
+  ]);
+  const workIds = works.map((w) => w.id);
+  const [images, showWorks] = workIds.length
+    ? await Promise.all([
+        db.select().from(s.workImages).where(and(inArray(s.workImages.workId, workIds), eq(s.workImages.position, 0))),
+        db.select().from(s.showWorks).where(inArray(s.showWorks.workId, workIds)),
+      ])
+    : [[], []];
+  const showName = new Map(shows.map((x) => [x.id, x.name]));
+  const thumbs = await signedImageUrls(images.map((i) => i.thumbPath ?? i.storagePath));
+  const imageByWork = new Map(images.map((img, i) => [img.workId, { id: img.id, thumb: thumbs[i], full: null, w: img.widthPx, h: img.heightPx } as BoardImage]));
+  return {
+    artist,
+    onWaitlist: waiting.length > 0,
+    applications: apps.map((a) => ({ id: a.id, show: a.showId ? (showName.get(a.showId) ?? a.showId) : "No show", showId: a.showId, status: a.status, submittedOn: a.submittedOn })),
+    works: works.map((w) => ({
+      id: w.id,
+      title: w.title,
+      year: w.year,
+      category: w.category,
+      medium: w.medium,
+      description: w.description,
+      price: w.priceUsd === null ? null : Number(w.priceUsd),
+      width: w.width,
+      height: w.height,
+      depth: w.depth,
+      unit: w.unit,
+      sizeAsEntered: w.sizeAsEntered,
+      sold: !!w.soldAt,
+      submittedOn: w.submittedOn,
+      image: imageByWork.get(w.id) ?? null,
+      shows: showWorks.filter((x) => x.workId === w.id).map((x) => ({ showId: x.showId, name: showName.get(x.showId) ?? x.showId, status: x.status })),
+    })),
+    notes: notes.map((n) => ({ id: n.id, body: n.body, kind: n.kind, workId: n.workId, createdAt: n.createdAt.toISOString() })),
+  };
+}
+
+export async function getArtistDirectory() {
+  const [artists, works, apps] = await Promise.all([
+    db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email, arraeBio: s.artists.arraeBio }).from(s.artists).orderBy(asc(s.artists.name)),
+    db.select({ artistId: s.works.artistId }).from(s.works),
+    db.select({ artistId: s.applications.artistId, status: s.applications.status }).from(s.applications),
+  ]);
+  const count = new Map<string, number>();
+  for (const w of works) if (w.artistId) count.set(w.artistId, (count.get(w.artistId) ?? 0) + 1);
+  const selected = new Set(apps.filter((a) => a.status === "Selected").map((a) => a.artistId));
+  return artists.map((a) => ({ ...a, works: count.get(a.id) ?? 0, everSelected: selected.has(a.id), hasArraeBio: !!a.arraeBio }));
+}
+
+/** Everyone we could email, with what they've applied to, for the Messages page. */
+export async function getMessageRecipients() {
+  const [artists, apps, works, waiting, shows, history] = await Promise.all([
+    db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email }).from(s.artists).orderBy(asc(s.artists.name)),
+    db.select({ artistId: s.applications.artistId, showId: s.applications.showId, status: s.applications.status }).from(s.applications),
+    db
+      .select({ artistId: s.works.artistId, showId: s.showWorks.showId, status: s.showWorks.status })
+      .from(s.showWorks)
+      .innerJoin(s.works, eq(s.works.id, s.showWorks.workId)),
+    db.select({ id: s.waitlist.artistId }).from(s.waitlist),
+    db.select({ id: s.shows.id, name: s.shows.name, type: s.shows.type, opensOn: s.shows.opensOn }).from(s.shows).orderBy(desc(s.shows.opensOn), asc(s.shows.name)),
+    db.select().from(s.activity).where(eq(s.activity.kind, "email-batch")).orderBy(desc(s.activity.createdAt)).limit(20),
+  ]);
+  const waitingSet = new Set(waiting.map((w) => w.id));
+  // Per artist and show: did they apply, and were they (or any of their works) selected?
+  const perArtist = new Map<string, Map<string, { applied: boolean; selected: boolean }>>();
+  const mark = (artistId: string | null, showId: string | null, selected: boolean) => {
+    if (!artistId || !showId) return;
+    const m = perArtist.get(artistId) ?? new Map();
+    const cur = m.get(showId) ?? { applied: false, selected: false };
+    m.set(showId, { applied: true, selected: cur.selected || selected });
+    perArtist.set(artistId, m);
+  };
+  for (const a of apps) mark(a.artistId, a.showId, a.status === "Selected");
+  for (const w of works) mark(w.artistId, w.showId, w.status === "Selected");
+  return {
+    shows,
+    history: history.map((h) => ({ id: h.id, body: h.body, actor: h.actor, at: h.createdAt.toISOString() })),
+    artists: artists.map((a) => {
+      const m = perArtist.get(a.id) ?? new Map();
+      const entries = [...m.entries()];
+      return {
+        ...a,
+        roster: entries.some(([, v]) => v.selected),
+        onWaitlist: waitingSet.has(a.id),
+        appliedTo: entries.map(([k]) => k),
+        selectedFor: entries.filter(([, v]) => v.selected).map(([k]) => k),
+      };
+    }),
+  };
 }

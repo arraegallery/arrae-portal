@@ -431,6 +431,9 @@ function ArtistDrawer({
         </button>
         <p className="text-xs uppercase tracking-[0.2em] text-muted">{entry.group}</p>
         <h2 className="font-display text-3xl">{a.name}</h2>
+        <a href={`/admin/artists/${a.id}`} className="text-sm underline">
+          Open full profile to edit details, ARRAE bio and works →
+        </a>
         <p className="mt-1 text-sm text-muted">
           <a href={`mailto:${a.email}`} className="hover:underline">
             {a.email}
