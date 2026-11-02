@@ -41,7 +41,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     if (!handled.has(key)) handled.set(key, await worksToHandle(w.showId, w.kind as BookingKind));
   }
 
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ARRAE Gallery//Portal//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "X-WR-CALNAME:ARRAE drop-offs & pick-ups", "X-PUBLISHED-TTL:PT1H"];
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ARRAE Gallery//Portal//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "X-WR-CALNAME:ARRAE Gallery", "X-PUBLISHED-TTL:PT1H"];
   for (const b of bookings) {
     const w = windows.find((x) => x.id === b.windowId);
     const a = artists.find((x) => x.id === b.artistId);
@@ -62,6 +62,45 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
       ...(w.location ? [fold(`LOCATION:${esc(w.location)}`)] : []),
       "END:VEVENT",
     );
+  }
+  // Gallery calendar: show runs, deadlines and ARRAE's own events. Dates are all-day; DTEND is exclusive.
+  const ymd = (d: string) => d.replace(/-/g, "");
+  const nextDay = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+  const allDay = (uid: string, start: string, end: string, summary: string, desc?: string) =>
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:${uid}@arrae-portal`,
+      `DTSTAMP:${stamp(new Date())}`,
+      `DTSTART;VALUE=DATE:${ymd(start)}`,
+      `DTEND;VALUE=DATE:${ymd(nextDay(end))}`,
+      fold(`SUMMARY:${esc(summary)}`),
+      ...(desc ? [fold(`DESCRIPTION:${esc(desc)}`)] : []),
+      "END:VEVENT",
+    );
+  const fullShows = await db.select().from(s.shows);
+  for (const sh of fullShows) {
+    const start = sh.opensOn ?? sh.closesOn;
+    if (start) allDay(`show-${sh.id}`, start, sh.closesOn && sh.closesOn >= start ? sh.closesOn : start, `On view: ${sh.name}`, portalUrl("/admin/calendar"));
+    if (sh.applicationDeadline) allDay(`deadline-${sh.id}`, sh.applicationDeadline, sh.applicationDeadline, `Applications close: ${sh.name}`);
+    if (sh.decisionsDueOn) allDay(`decisions-${sh.id}`, sh.decisionsDueOn, sh.decisionsDueOn, `Decisions due: ${sh.name}`);
+  }
+  const hhmm = (t: string) => `${t.replace(":", "")}00`;
+  for (const e of await db.select().from(s.galleryEvents)) {
+    const end = e.endsOn && e.endsOn > e.startsOn ? e.endsOn : e.startsOn;
+    const desc = [e.notes, portalUrl("/admin/calendar")].filter(Boolean).join("\n\n");
+    if (e.startTime && end === e.startsOn) {
+      lines.push(
+        "BEGIN:VEVENT",
+        `UID:${e.id}@arrae-portal`,
+        `DTSTAMP:${stamp(e.createdAt)}`,
+        `DTSTART;TZID=America/New_York:${ymd(e.startsOn)}T${hhmm(e.startTime)}`,
+        `DTEND;TZID=America/New_York:${ymd(e.startsOn)}T${hhmm(e.endTime && e.endTime > e.startTime ? e.endTime : e.startTime)}`,
+        fold(`SUMMARY:${esc(e.title)}`),
+        fold(`DESCRIPTION:${esc(desc)}`),
+        ...(e.location ? [fold(`LOCATION:${esc(e.location)}`)] : []),
+        "END:VEVENT",
+      );
+    } else allDay(e.id, e.startsOn, end, e.title, desc);
   }
   lines.push("END:VCALENDAR");
   return new Response(lines.join("\r\n") + "\r\n", {

@@ -351,3 +351,19 @@ export const documents = pgTable("documents", {
   uploadedByRole: text("uploaded_by_role").notNull(), // arrae | artist
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+/** Gallery calendar entries ARRAE adds: openings, private events, installs, closures. Show runs come from `shows`. */
+export const galleryEvents = pgTable("gallery_events", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  kind: text("kind").notNull().default("event"), // event | opening | install | private | closed | other
+  startsOn: date("starts_on").notNull(),
+  endsOn: date("ends_on"), // inclusive; null = one day
+  startTime: text("start_time"), // HH:MM, gallery time
+  endTime: text("end_time"),
+  location: text("location"),
+  notes: text("notes"),
+  showId: text("show_id").references(() => shows.id, { onDelete: "set null" }),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});

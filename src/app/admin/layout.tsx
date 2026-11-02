@@ -56,6 +56,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                 <NavMenu
                   label="Gallery"
                   items={[
+                    { href: "/admin/calendar", label: "Calendar", hint: "shows & events" },
                     { href: "/admin/logistics", label: "Logistics", hint: "drop-off & pick-up" },
                     { href: "/admin/shopify", label: "Shopify" },
                     { href: "/admin/team", label: "Team", divider: true },
