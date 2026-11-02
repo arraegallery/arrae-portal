@@ -29,6 +29,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <Link href="/admin/sandbox" className="rounded-md px-2 py-1 hover:bg-white">
               Sandbox
             </Link>
+            <Link href="/admin/artists" className="rounded-md px-2 py-1 hover:bg-white">
+              Artists
+            </Link>
             <Link href="/admin/waitlist" className="rounded-md px-2 py-1 hover:bg-white">
               Waitlist
             </Link>

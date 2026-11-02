@@ -251,3 +251,64 @@ export async function reassignWorks(workIds: string[], to: { artistId: string } 
   revalidatePath("/admin", "layout");
   return artistId;
 }
+
+// ---- Editing artist and work records ----
+
+const clean = (v: unknown, max = 4000) => {
+  const t = typeof v === "string" ? v.trim() : "";
+  return t ? t.slice(0, max) : null;
+};
+
+export async function updateArtist(
+  artistId: string,
+  fields: Partial<Record<"name" | "email" | "phone" | "website" | "social" | "education" | "bio" | "arraeBio" | "internalNotes" | "shopifyCollectionHandle", string>> & {
+    onboarding?: Record<string, boolean | string>;
+  },
+) {
+  const actor = await requireAdmin();
+  const set: Partial<typeof s.artists.$inferInsert> = {};
+  if (fields.name !== undefined) {
+    const n = clean(fields.name, 200);
+    if (!n) throw new Error("Name can't be empty");
+    set.name = n;
+  }
+  if (fields.email !== undefined) set.email = (clean(fields.email, 320) ?? "").toLowerCase();
+  for (const k of ["phone", "website", "social", "education", "shopifyCollectionHandle"] as const) if (fields[k] !== undefined) set[k] = clean(fields[k], 500);
+  for (const k of ["bio", "arraeBio", "internalNotes"] as const) if (fields[k] !== undefined) set[k] = clean(fields[k], 10000);
+  if (fields.onboarding) set.onboarding = fields.onboarding;
+  if (!Object.keys(set).length) return;
+  await db.update(s.artists).set(set).where(eq(s.artists.id, artistId));
+  await log({ artistId, kind: "edit", body: `Profile edited: ${Object.keys(set).join(", ")}`, actor });
+  revalidatePath("/admin", "layout");
+}
+
+export async function updateWork(
+  workId: string,
+  fields: { title?: string; year?: string; medium?: string; category?: string; description?: string; price?: string; width?: string; height?: string; depth?: string; unit?: string },
+) {
+  const actor = await requireAdmin();
+  const num = (v?: string) => {
+    if (v === undefined) return undefined;
+    const t = v.trim();
+    if (!t) return null;
+    const n = Number(t.replace(/[$,]/g, ""));
+    if (!Number.isFinite(n) || n < 0) throw new Error(`"${v}" isn't a number`);
+    return n;
+  };
+  const set: Partial<typeof s.works.$inferInsert> = {};
+  if (fields.title !== undefined) set.title = clean(fields.title, 300) ?? "Untitled";
+  for (const k of ["year", "medium", "category"] as const) if (fields[k] !== undefined) set[k] = clean(fields[k], 300);
+  if (fields.description !== undefined) set.description = clean(fields.description, 10000);
+  const price = num(fields.price);
+  if (price !== undefined) set.priceUsd = price === null ? null : price.toFixed(2);
+  for (const k of ["width", "height", "depth"] as const) {
+    const v = num(fields[k]);
+    if (v !== undefined) set[k] = v;
+  }
+  if (fields.unit !== undefined) set.unit = fields.unit === "cm" ? "cm" : "in";
+  if (set.width !== undefined || set.height !== undefined) set.sizeConfidence = "high";
+  if (!Object.keys(set).length) return;
+  const [w] = await db.update(s.works).set(set).where(eq(s.works.id, workId)).returning({ artistId: s.works.artistId, title: s.works.title });
+  await log({ artistId: w?.artistId, workId, kind: "edit", body: `"${w?.title}" edited`, actor });
+  revalidatePath("/admin", "layout");
+}

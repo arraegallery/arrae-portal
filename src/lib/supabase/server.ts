@@ -27,5 +27,7 @@ export async function supabaseForRequest() {
 export function supabaseAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { persistSession: false },
+    // Never let a slow storage call hold a page open until Vercel's hard limit.
+    global: { fetch: (input, init) => fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(20_000) }) },
   });
 }
