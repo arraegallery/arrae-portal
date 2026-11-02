@@ -30,6 +30,9 @@ export default async function StudioLayout({ children }: { children: React.React
             <Link href="/studio/messages" className="rounded-md px-2 py-1 hover:bg-white">
               Messages
             </Link>
+            <Link href="/studio/documents" className="rounded-md px-2 py-1 hover:bg-white">
+              Documents
+            </Link>
           </nav>
           <form action={signOut} className="ml-auto flex items-center gap-3 text-xs text-muted">
             <span className="hidden sm:inline">{artist.name}</span>

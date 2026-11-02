@@ -19,6 +19,9 @@ import {
   updateWork,
 } from "../../actions";
 import { AgreementPanel, type AgreementSummary } from "../../agreements/AgreementPanel";
+import { DocumentCenter } from "@/components/DocumentCenter";
+import type { DocRow } from "@/lib/document-kinds";
+import { addArtistDocument, prepareArtistDocument, removeArtistDocument, setDocumentVisible } from "../../documents/actions";
 import { PhotoManager } from "@/components/PhotoManager";
 import { Thread } from "@/components/Thread";
 import { ARTIST_ONBOARDING, SHOW_ONBOARDING, readOnboarding, type Onboarding } from "@/lib/onboarding";
@@ -45,7 +48,7 @@ type Change = Profile["changes"][number];
 const ASK_NOTE = "Thank you for applying! Could you send us better photos of this work? Straight on, in good natural light, filling the frame, with no glare or background. A detail shot is welcome too.";
 type ShowOption = Profile["shows"][number];
 
-export function ArtistProfile({ profile, owner, agreement }: { profile: Profile; owner: boolean; agreement: AgreementSummary }) {
+export function ArtistProfile({ profile, owner, agreement, documents }: { profile: Profile; owner: boolean; agreement: AgreementSummary; documents: DocRow[] | null }) {
   const a = profile.artist;
   const initial = {
     name: a.name,
@@ -232,6 +235,24 @@ export function ArtistProfile({ profile, owner, agreement }: { profile: Profile;
             <p className="mb-2 mt-1 text-xs text-muted">The artist sees this conversation in their studio and gets an email when you write.</p>
             <Thread initial={profile.messages} me="arrae" otherName={saved.name.split(/\s+/)[0]} send={(body) => sendMessageToArtist(a.id, body)} placeholder={`Write to ${saved.name}…`} />
           </section>
+          {owner && documents && (
+            <section id="documents" className="mt-8 scroll-mt-20">
+              <h2 className="text-xs uppercase tracking-wider text-muted">Documents</h2>
+              <p className="mb-2 mt-1 text-xs text-muted">Invoices, payment statements, W-9s and certificates. Signed agreements appear here on their own.</p>
+              <DocumentCenter
+                mode="arrae"
+                initial={documents}
+                artistName={saved.name.split(/\s+/)[0]}
+                shows={profile.shows.map((x) => ({ id: x.id, name: x.name }))}
+                actions={{
+                  prepare: (name, size) => prepareArtistDocument(a.id, name, size),
+                  add: (input) => addArtistDocument({ ...input, artistId: a.id }),
+                  remove: removeArtistDocument,
+                  setVisible: setDocumentVisible,
+                }}
+              />
+            </section>
+          )}
           <ArtistNotes artistId={a.id} notes={profile.notes} works={profile.works} />
         </section>
       </div>
