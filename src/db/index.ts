@@ -10,12 +10,17 @@ if (!url) throw new Error("DATABASE_URL is not set");
 // sockets dead without postgres-js noticing; a query sent on one then waits until
 // the platform kills the request. Short idle and lifetime limits retire sockets
 // before that happens, and connect_timeout fails fast instead of hanging.
+// max_pipeline: 1 stops postgres-js from stacking extra queries onto a busy
+// connection when a page runs more queries at once than the pool has sockets.
+// Supabase's transaction pooler can stall on those pipelined queries, and a
+// stalled socket then blocks every later request on the same server.
 const globalForDb = globalThis as unknown as { pg?: ReturnType<typeof postgres> };
 const client =
   globalForDb.pg ??
   postgres(url, {
     prepare: false,
     max: 5,
+    ...({ max_pipeline: 1 } as object), // supported at runtime, missing from the types
     idle_timeout: 5,
     max_lifetime: 60,
     connect_timeout: 10,
