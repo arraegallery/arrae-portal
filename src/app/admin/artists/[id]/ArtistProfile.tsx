@@ -2,7 +2,22 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { addNote, addWorksToShow, sendMessageToArtist, setOnboardingStep, updateArtist, updateWork } from "../../actions";
+import {
+  addNote,
+  addWorkPhotos,
+  addWorksToShow,
+  clearPhotoRequest,
+  getWorkPhotos,
+  makeWorkMainPhoto,
+  prepareWorkPhotoUploads,
+  removeWorkPhoto,
+  requestBetterPhotos,
+  sendMessageToArtist,
+  setOnboardingStep,
+  updateArtist,
+  updateWork,
+} from "../../actions";
+import { PhotoManager } from "@/components/PhotoManager";
 import { Thread } from "@/components/Thread";
 import { ARTIST_ONBOARDING, SHOW_ONBOARDING, readOnboarding, type Onboarding } from "@/lib/onboarding";
 import { TRACKED_FIELDS } from "@/lib/change-fields";
@@ -24,9 +39,11 @@ const FIELDS = [
 ] as const;
 
 type Change = Profile["changes"][number];
+
+const ASK_NOTE = "Thank you for applying! Could you send us better photos of this work? Straight on, in good natural light, filling the frame, with no glare or background. A detail shot is welcome too.";
 type ShowOption = Profile["shows"][number];
 
-export function ArtistProfile({ profile }: { profile: Profile }) {
+export function ArtistProfile({ profile, owner }: { profile: Profile; owner: boolean }) {
   const a = profile.artist;
   const initial = {
     name: a.name,
@@ -204,7 +221,7 @@ export function ArtistProfile({ profile }: { profile: Profile }) {
           <h2 className="text-xs uppercase tracking-wider text-muted">Works ({profile.works.length})</h2>
           <ul className="mt-3 space-y-3">
             {profile.works.map((w) => (
-              <WorkRow key={w.id} work={w} shows={profile.shows} changes={profile.changes.filter((c) => c.workId === w.id)} />
+              <WorkRow key={w.id} work={w} shows={profile.shows} owner={owner} artistName={saved.name} changes={profile.changes.filter((c) => c.workId === w.id)} />
             ))}
           </ul>
           <section id="messages" className="mt-8 scroll-mt-20">
@@ -295,8 +312,11 @@ function ChangeLog({ changes, works }: { changes: Change[]; works: Work[] }) {
   );
 }
 
-function WorkRow({ work: initial, shows, changes }: { work: Work; shows: ShowOption[]; changes: Change[] }) {
+function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: Work; shows: ShowOption[]; changes: Change[]; owner: boolean; artistName: string }) {
   const [work, setWork] = useState(initial);
+  const [panel, setPanel] = useState<"photos" | "ask" | null>(null);
+  const [askNote, setAskNote] = useState(ASK_NOTE);
+  const [asked, setAsked] = useState<string | null>(null);
   const [putForward, setPutForward] = useState("");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -353,17 +373,86 @@ function WorkRow({ work: initial, shows, changes }: { work: Work; shows: ShowOpt
                   {work.sold ? " · Sold" : ""}
                 </p>
               </div>
-              <button onClick={start} className="ml-auto shrink-0 text-xs text-muted hover:underline">
-                Edit
-              </button>
+              <div className="ml-auto flex shrink-0 gap-3 text-xs text-muted">
+                <button onClick={() => setPanel(panel === "photos" ? null : "photos")} className="hover:underline">
+                  Photos
+                </button>
+                <button onClick={() => setPanel(panel === "ask" ? null : "ask")} className="hover:underline">
+                  Ask for better photos
+                </button>
+                <button onClick={start} className="hover:underline">
+                  Edit
+                </button>
+              </div>
             </div>
+            {work.photosRequestedAt && (
+              <p className="mt-1 inline-flex items-center gap-2 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-900 ring-1 ring-amber-200">
+                Better photos requested {when(work.photosRequestedAt)}
+                <button
+                  onClick={() =>
+                    startTransition(async () => {
+                      await clearPhotoRequest(work.id);
+                      setWork({ ...work, photosRequestedAt: null });
+                    })
+                  }
+                  className="underline"
+                >
+                  Clear
+                </button>
+              </p>
+            )}
+            {asked && <p className="mt-1 text-xs text-emerald-800">{asked}</p>}
+            {panel === "photos" && (
+              <div className="mt-2">
+                <PhotoManager
+                  actions={{
+                    list: () => getWorkPhotos(work.id),
+                    prepare: (n) => prepareWorkPhotoUploads(work.id, n),
+                    add: (imgs, asMain) => addWorkPhotos(work.id, imgs, asMain),
+                    makeMain: (id) => makeWorkMainPhoto(work.id, id),
+                    remove: (id) => removeWorkPhoto(work.id, id),
+                  }}
+                  onChange={(main) => setWork({ ...work, image: main ? { id: main.id, thumb: main.thumb, full: main.full, w: main.w, h: main.h } : null })}
+                />
+              </div>
+            )}
+            {panel === "ask" && (
+              <div className="mt-2 rounded-lg bg-paper p-3 ring-1 ring-line">
+                <p className="text-xs text-muted">This goes to {artistName} in your message thread (and by email), with the work&rsquo;s title. They can upload new photos from their studio.</p>
+                <textarea value={askNote} onChange={(e) => setAskNote(e.target.value)} className="mt-2 h-24 w-full rounded-md bg-white p-2 text-sm ring-1 ring-line" />
+                <div className="mt-2 flex justify-end gap-2">
+                  <button onClick={() => setPanel(null)} className="rounded-md px-3 py-1 text-xs ring-1 ring-line">
+                    Cancel
+                  </button>
+                  <button
+                    disabled={pending}
+                    onClick={() =>
+                      startTransition(async () => {
+                        setError(null);
+                        try {
+                          await requestBetterPhotos([work.id], askNote);
+                          setWork({ ...work, photosRequestedAt: new Date().toISOString() });
+                          setAsked(`Sent to ${artistName}. It's saved in your message thread with them.`);
+                          setPanel(null);
+                        } catch (e) {
+                          setError((e as Error).message);
+                        }
+                      })
+                    }
+                    className="rounded-md bg-ink px-3 py-1 text-xs text-white disabled:opacity-50"
+                  >
+                    Send request
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="mt-1.5 flex flex-wrap items-center gap-1">
               {work.shows.map((s) => (
                 <span key={s.showId} className={`rounded-full px-2 py-0.5 text-[11px] ring-1 ${STATUS_TONE[s.status] ?? STATUS_TONE.Submitted}`}>
                   {s.name}: {s.status}
                 </span>
               ))}
-              {!work.sold && (
+              {!work.sold && owner && (
                 <select
                   value={putForward}
                   disabled={pending}

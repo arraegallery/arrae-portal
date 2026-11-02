@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { ShowTabs } from "@/components/ShowTabs";
-import { addNote, addToSandbox, moveWorksToShow, reassignWorks, removeFromSandbox, removeWorksFromShow, setApplicationStatus, setWorkStatus } from "../../actions";
+import { addNote, addToSandbox, moveWorksToShow, reassignWorks, removeFromSandbox, removeWorksFromShow, requestBetterPhotos, setApplicationStatus, setWorkStatus } from "../../actions";
+
+const PHOTO_NOTE = "Thank you for applying! Could you send us better photos of these works? Straight on, in good natural light, filling the frame, with no glare or background. A detail shot is welcome too.";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { BoardEntry, BoardWork } from "@/lib/queries";
 import {
@@ -593,7 +595,8 @@ function FixSubmission({
 }) {
   const [open, setOpen] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(() => new Set(entry.works.map((w) => w.id)));
-  const [mode, setMode] = useState<"move" | "artist" | "remove">("move");
+  const [mode, setMode] = useState<"move" | "artist" | "remove" | "photos">("move");
+  const [photoNote, setPhotoNote] = useState(PHOTO_NOTE);
   const [toShow, setToShow] = useState("");
   const [artistQuery, setArtistQuery] = useState("");
   const [toArtist, setToArtist] = useState<string | null>(null);
@@ -622,7 +625,7 @@ function FixSubmission({
   if (!open)
     return (
       <button onClick={() => setOpen(true)} className="mt-6 text-sm text-muted underline">
-        Wrong show or wrong artist? Fix this submission
+        Wrong show, wrong artist, or poor photos? Fix this submission
       </button>
     );
 
@@ -669,7 +672,29 @@ function FixSubmission({
         {tab("move", "Belongs in another show")}
         {tab("artist", "Belongs to another artist")}
         {tab("remove", `Shouldn't be in ${showName}`)}
+        {tab("photos", "Photos aren't good enough")}
       </div>
+
+      {mode === "photos" && (
+        <div className="mt-3 space-y-2 text-sm">
+          <p className="text-xs text-muted">
+            This asks {entry.artist.name} for better photos of the works you picked, in your message thread and by email. They upload new ones from their studio. You can also
+            replace photos yourself on{" "}
+            <a href={`/admin/artists/${entry.artist.id}`} className="underline">
+              their profile
+            </a>
+            .
+          </p>
+          <textarea value={photoNote} onChange={(e) => setPhotoNote(e.target.value)} className="h-24 w-full rounded-md p-2 ring-1 ring-line" />
+          <button
+            disabled={!ids.length || pending}
+            onClick={() => run(() => requestBetterPhotos(ids, photoNote))}
+            className="rounded-md bg-ink px-3 py-1.5 text-white disabled:opacity-40"
+          >
+            {pending ? "Sending…" : `Ask for better photos of ${ids.length} work${ids.length === 1 ? "" : "s"}`}
+          </button>
+        </div>
+      )}
 
       {mode === "move" && (
         <div className="mt-3 space-y-2 text-sm">

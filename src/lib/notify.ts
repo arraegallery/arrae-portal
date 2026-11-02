@@ -30,3 +30,19 @@ export async function notifyNewMessage(opts: { to: "arrae" | string; artistName:
     // The message itself is stored; an email hiccup shouldn't fail the send.
   }
 }
+
+/** Best-effort branded email to a few people. Never throws. */
+export async function notifyEmail(to: string[], content: { subject: string; heading?: string; body: string; buttonLabel?: string; buttonUrl?: string }) {
+  if (!emailConfigured() || !to.length) return false;
+  try {
+    const r = await sendEmails(to.map((t) => ({ to: t, subject: content.subject, html: renderEmail(content), text: renderText(content) })));
+    return r.sent > 0;
+  } catch {
+    return false;
+  }
+}
+
+export const portalUrl = (path = "") => `${PORTAL}${path}`;
+
+/** Where ARRAE's own notices go: the shared inbox plus the owners. */
+export const arraeRecipients = () => [EMAIL_REPLY_TO, ...adminEmails()].filter((e, i, a) => e && a.indexOf(e) === i).slice(0, 3);

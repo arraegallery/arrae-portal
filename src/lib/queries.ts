@@ -338,6 +338,7 @@ export async function getArtistProfile(artistId: string) {
       sizeAsEntered: w.sizeAsEntered,
       sold: !!w.soldAt,
       submittedOn: w.submittedOn,
+      photosRequestedAt: w.photosRequestedAt?.toISOString() ?? null,
       image: imageByWork.get(w.id) ?? null,
       shows: showWorks.filter((x) => x.workId === w.id).map((x) => ({ showId: x.showId, name: showName.get(x.showId) ?? x.showId, status: x.status })),
     })),

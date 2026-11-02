@@ -109,6 +109,9 @@ export const works = pgTable("works", {
   processVideo: text("process_video"),
   coaRequested: boolean("coa_requested").default(false).notNull(),
   receivedAt: timestamp("received_at", { withTimezone: true }),
+  photosRequestedAt: timestamp("photos_requested_at", { withTimezone: true }),
+  photosRequestNote: text("photos_request_note"),
+  shopifyReviewedAt: timestamp("shopify_reviewed_at", { withTimezone: true }),
   shopifyProductId: text("shopify_product_id"),
   shopifyHandle: text("shopify_handle"),
   soldAt: timestamp("sold_at", { withTimezone: true }),
@@ -142,6 +145,10 @@ export const showWorks = pgTable(
     status: workStatus("status").notNull().default("Submitted"),
     note: text("note"),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+    receivedBy: text("received_by"),
+    pickedUpAt: timestamp("picked_up_at", { withTimezone: true }),
+    pickedUpBy: text("picked_up_by"),
   },
   (t) => [primaryKey({ columns: [t.showId, t.workId] })],
 );
@@ -219,6 +226,59 @@ export const artistMessages = pgTable("artist_messages", {
   readByArraeAt: timestamp("read_by_arrae_at", { withTimezone: true }),
   readByArtistAt: timestamp("read_by_artist_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** ARRAE team members beyond the owners in ADMIN_EMAILS. Staff (interns) get messages and logistics only. */
+export const teamMembers = pgTable("team_members", {
+  email: text("email").primaryKey(),
+  name: text("name"),
+  role: text("role").notNull().default("staff"), // staff
+  addedBy: text("added_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+});
+
+/** A range of days and hours when artists can book a drop-off or pick-up for a show. */
+export const bookingWindows = pgTable("booking_windows", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  showId: text("show_id")
+    .notNull()
+    .references(() => shows.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(), // dropoff | pickup
+  startsOn: date("starts_on").notNull(),
+  endsOn: date("ends_on").notNull(),
+  dayStart: text("day_start").notNull().default("11:00"), // HH:MM, gallery time
+  dayEnd: text("day_end").notNull().default("17:00"),
+  weekdays: text("weekdays").notNull().default("1,2,3,4,5,6"), // 0 = Sunday
+  slotMinutes: integer("slot_minutes").notNull().default(30),
+  capacity: integer("capacity").notNull().default(1),
+  location: text("location"),
+  note: text("note"),
+  open: boolean("open").notNull().default(true),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const bookings = pgTable("bookings", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  windowId: integer("window_id")
+    .notNull()
+    .references(() => bookingWindows.id, { onDelete: "cascade" }),
+  artistId: text("artist_id")
+    .notNull()
+    .references(() => artists.id, { onDelete: "cascade" }),
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+  endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+  note: text("note"),
+  bookedBy: text("booked_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+});
+
+/** Small key/value settings, such as the private calendar feed token. */
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
 });
 
 export type Artist = typeof artists.$inferSelect;

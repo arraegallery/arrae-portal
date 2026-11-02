@@ -36,6 +36,13 @@
       "when": 1793637517347,
       "tag": "0004_decisions_released",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793639701625,
+      "tag": "0005_logistics_team",
+      "breakpoints": true
     }
   ]
 }

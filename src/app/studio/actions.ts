@@ -6,9 +6,9 @@ import { db, schema as s } from "@/db";
 import { requireArtist } from "@/lib/artist-auth";
 import { ensureApplication, logActivity } from "@/lib/applications";
 import { recordWorkChanges } from "@/lib/changes";
-import { IMAGE_BUCKET } from "@/lib/images";
-import { notifyNewMessage } from "@/lib/notify";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { attachPhotos, createPhotoSlots, listPhotos, makeMainPhoto, removePhoto, type UploadedPhoto } from "@/lib/photos";
+import { arraeRecipients, notifyEmail, notifyNewMessage, portalUrl } from "@/lib/notify";
+import { bookSlot, cancelBookingRow, formatSlot, getStudioBookings, KIND_LABEL, worksToHandle, type BookingKind } from "@/lib/logistics";
 
 const rand = () => crypto.randomUUID().replace(/-/g, "").slice(0, 14);
 const clean = (v: unknown, max = 4000) => {
@@ -65,16 +65,8 @@ export async function withdrawWork(workId: string, showId: string) {
 /** Signed upload slots for a new work's photos: a full image and a small one for grids, per photo. */
 export async function prepareUploads(count: number) {
   await requireArtist();
-  const n = Math.min(Math.max(1, Math.floor(count)), 5);
   const workId = `wrk_${rand()}`;
-  const storage = supabaseAdmin().storage.from(IMAGE_BUCKET);
-  const slots = [];
-  for (let i = 0; i < n; i++) {
-    const base = `works/${workId}/${rand()}`;
-    const [full, thumb] = await Promise.all([storage.createSignedUploadUrl(`${base}.jpg`), storage.createSignedUploadUrl(`${base}-thumb.jpg`)]);
-    if (full.error || thumb.error) throw new Error(`Couldn't prepare the upload: ${(full.error ?? thumb.error)?.message}`);
-    slots.push({ full: { path: full.data.path, token: full.data.token }, thumb: { path: thumb.data.path, token: thumb.data.token } });
-  }
+  const slots = await createPhotoSlots(workId, count);
   return { workId, slots };
 }
 
@@ -176,4 +168,97 @@ export async function markStudioMessagesRead() {
     .update(s.artistMessages)
     .set({ readByArtistAt: new Date() })
     .where(and(inArray(s.artistMessages.artistId, me.artistIds), eq(s.artistMessages.sender, "arrae"), isNull(s.artistMessages.readByArtistAt)));
+}
+
+/* Photos on an artist's own works. */
+
+async function myEditableWork(workId: string) {
+  const { me, rows } = await myWorks([workId]);
+  if (rows[0].soldAt) throw new Error("This work has sold, so its photos are locked. Send us a message if something needs fixing.");
+  return { me, work: rows[0] };
+}
+
+export async function getMyWorkPhotos(workId: string) {
+  await myWorks([workId]);
+  return listPhotos(workId);
+}
+
+export async function prepareMyPhotoUploads(workId: string, count: number) {
+  await myEditableWork(workId);
+  return createPhotoSlots(workId, count);
+}
+
+/** New photos from the artist. If ARRAE asked for better ones, this answers the request and lets ARRAE know. */
+export async function addMyWorkPhotos(workId: string, images: UploadedPhoto[], asMain: boolean) {
+  const { me, work } = await myEditableWork(workId);
+  await attachPhotos(workId, images, asMain);
+  await logActivity({ artistId: work.artistId, workId, kind: "edit", body: `Artist uploaded ${images.length} new photo${images.length === 1 ? "" : "s"} for "${work.title}"`, actor: me.email });
+  if (work.photosRequestedAt) {
+    await db.update(s.works).set({ photosRequestedAt: null, photosRequestNote: null }).where(eq(s.works.id, workId));
+    const body = `I've uploaded new photos for "${work.title}".`;
+    await db.insert(s.artistMessages).values({ artistId: me.artist.id, sender: "artist", body, actor: me.email, readByArtistAt: new Date() });
+    await notifyNewMessage({ to: "arrae", artistName: me.artist.name, preview: body, artistId: me.artist.id });
+  }
+  revalidatePath("/studio");
+  return listPhotos(workId);
+}
+
+export async function makeMyMainPhoto(workId: string, imageId: string) {
+  await myEditableWork(workId);
+  await makeMainPhoto(workId, imageId);
+  revalidatePath("/studio");
+  return listPhotos(workId);
+}
+
+export async function removeMyPhoto(workId: string, imageId: string) {
+  await myEditableWork(workId);
+  await removePhoto(workId, imageId, true);
+  revalidatePath("/studio");
+  return listPhotos(workId);
+}
+
+/* Drop-off and pick-up times. */
+
+export async function bookMyTime(windowId: number, start: string, note?: string) {
+  const me = await requireArtist();
+  const mine = (await getStudioBookings(me.artistIds)).find((x) => x.id === windowId);
+  if (!mine) throw new Error("There's nothing for you to book here");
+  const [w] = await db.select().from(s.bookingWindows).where(eq(s.bookingWindows.id, windowId));
+  const handle = await worksToHandle(w.showId, w.kind as BookingKind);
+  const artistId = me.artistIds.find((id) => handle.has(id))!;
+  const r = await bookSlot({ windowId, artistId, start, by: me.email, note });
+  const when = formatSlot(r.booking.startsAt.toISOString());
+  const [show] = await db.select({ name: s.shows.name }).from(s.shows).where(eq(s.shows.id, r.window.showId));
+  const label = KIND_LABEL[r.window.kind as BookingKind];
+  await logActivity({ artistId, showId: r.window.showId, kind: "logistics", body: `Artist ${r.moved ? "moved their" : "booked a"} ${label.toLowerCase()} ${r.moved ? "to" : "for"} ${when}`, actor: me.email });
+  await notifyEmail(arraeRecipients(), {
+    subject: `${me.artist.name}: ${label.toLowerCase()} ${r.moved ? "moved to" : "booked for"} ${when}`,
+    heading: `${label} ${r.moved ? "moved" : "booked"}`,
+    body: `${me.artist.name} ${r.moved ? "moved their" : "booked a"} ${label.toLowerCase()} for ${show?.name ?? "a show"}: ${when}.${r.booking.note ? `\n\nTheir note: ${r.booking.note}` : ""}`,
+    buttonLabel: "Open logistics",
+    buttonUrl: portalUrl("/admin/logistics"),
+  });
+  revalidatePath("/studio");
+  revalidatePath("/admin/logistics");
+  return { start: r.booking.startsAt.toISOString() };
+}
+
+export async function cancelMyBooking(bookingId: number) {
+  const me = await requireArtist();
+  const [b] = await db.select().from(s.bookings).where(eq(s.bookings.id, bookingId));
+  if (!b || !me.artistIds.includes(b.artistId)) throw new Error("That isn't one of your bookings");
+  const r = await cancelBookingRow(bookingId);
+  if (r?.window) {
+    const when = formatSlot(b.startsAt.toISOString());
+    const label = KIND_LABEL[r.window.kind as BookingKind];
+    await logActivity({ artistId: b.artistId, showId: r.window.showId, kind: "logistics", body: `Artist cancelled their ${label.toLowerCase()} on ${when}`, actor: me.email });
+    await notifyEmail(arraeRecipients(), {
+      subject: `${me.artist.name} cancelled their ${label.toLowerCase()} (${when})`,
+      body: `${me.artist.name} cancelled their ${label.toLowerCase()} on ${when}. They haven't picked a new time yet.`,
+      buttonLabel: "Open logistics",
+      buttonUrl: portalUrl("/admin/logistics"),
+    });
+  }
+  revalidatePath("/studio");
+  revalidatePath("/admin/logistics");
 }

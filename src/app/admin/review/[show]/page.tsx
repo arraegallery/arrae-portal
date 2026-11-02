@@ -1,3 +1,4 @@
+import { requireOwner } from "@/lib/team";
 import { notFound } from "next/navigation";
 import { getArtistList, getBoard, getSandboxWorkIds, getShows } from "@/lib/queries";
 import { ReviewBoard } from "./ReviewBoard";
@@ -6,6 +7,7 @@ import { ReviewBoard } from "./ReviewBoard";
 export const maxDuration = 60;
 
 export default async function ReviewPage({ params }: { params: Promise<{ show: string }> }) {
+  await requireOwner();
   const { show } = await params;
   const [board, sandboxIds, shows, artists] = await Promise.all([getBoard(show), getSandboxWorkIds(show), getShows(), getArtistList()]);
   if (!board) notFound();

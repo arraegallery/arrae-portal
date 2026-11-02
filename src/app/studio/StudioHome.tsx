@@ -3,18 +3,23 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { uploadPhotos } from "@/lib/photo-upload";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { Studio } from "@/lib/studio";
-import { prepareUploads, putForwardWorks, submitNewWork, updateMyWork, withdrawWork } from "./actions";
+import type { getStudioBookings } from "@/lib/logistics";
+import { bookMyTime, cancelMyBooking, addMyWorkPhotos, getMyWorkPhotos, makeMyMainPhoto, prepareMyPhotoUploads, prepareUploads, putForwardWorks, removeMyPhoto, submitNewWork, updateMyWork, withdrawWork } from "./actions";
+import { PhotoManager } from "@/components/PhotoManager";
 
 type Work = Studio["works"][number];
 type OpenShow = Studio["openShows"][number];
+type StudioBookings = Awaited<ReturnType<typeof getStudioBookings>>;
+const TZ = "America/New_York";
+const fmtSlot = (iso: string, o: Intl.DateTimeFormatOptions) => new Date(iso).toLocaleString("en-US", { timeZone: TZ, ...o });
 
 const input = "mt-0.5 w-full rounded-md bg-white px-3 py-2 text-sm text-ink ring-1 ring-line focus:ring-ink";
 const fmtDate = (d: string | null) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : null);
 
-export function StudioHome({ name, studio, unread }: { name: string; studio: Studio; unread: number }) {
+export function StudioHome({ name, studio, unread, bookings }: { name: string; studio: Studio; unread: number; bookings: StudioBookings }) {
   const first = name.trim().split(/\s+/)[0];
   return (
     <main className="mx-auto max-w-5xl px-4 pb-24">
@@ -36,6 +41,10 @@ export function StudioHome({ name, studio, unread }: { name: string; studio: Stu
           </Link>
         )}
       </section>
+
+      {bookings.map((b) => (
+        <BookTime key={b.id} b={b} />
+      ))}
 
       {studio.openShows.map((show) => (
         <OpenCall key={show.id} show={show} works={studio.works} />
@@ -188,20 +197,6 @@ function OpenCall({ show, works }: { show: OpenShow; works: Work[] }) {
   );
 }
 
-/** Shrinks a photo in the browser to a JPEG no wider or taller than `max` pixels. */
-async function shrink(file: File, max: number): Promise<{ blob: Blob; w: number; h: number }> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
-  const w = Math.round(bitmap.width * scale);
-  const h = Math.round(bitmap.height * scale);
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, w, h);
-  const blob = await new Promise<Blob>((ok, no) => canvas.toBlob((b) => (b ? ok(b) : no(new Error("Couldn't read that photo"))), "image/jpeg", 0.86));
-  return { blob, w: bitmap.width, h: bitmap.height };
-}
-
 function NewWorkForm({ show, onDone, onCancel }: { show: OpenShow; onDone: (title: string) => void; onCancel: () => void }) {
   const [f, setF] = useState({ title: "", year: "", medium: "", height: "", width: "", depth: "", unit: "in", price: "", description: "" });
   const [files, setFiles] = useState<File[]>([]);
@@ -220,18 +215,7 @@ function NewWorkForm({ show, onDone, onCancel }: { show: OpenShow; onDone: (titl
         if (!f.height.trim() || !f.width.trim()) throw new Error("Add the height and width");
         setProgress("Preparing photos…");
         const { workId, slots } = await prepareUploads(files.length);
-        const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
-        const bucket = supabase.storage.from("artworks");
-        const images = [];
-        for (let i = 0; i < files.length; i++) {
-          setProgress(`Uploading photo ${i + 1} of ${files.length}…`);
-          const full = await shrink(files[i], 2400);
-          const thumb = await shrink(files[i], 700);
-          const a = await bucket.uploadToSignedUrl(slots[i].full.path, slots[i].full.token, full.blob, { contentType: "image/jpeg" });
-          if (a.error) throw new Error(`Photo ${i + 1} didn't upload: ${a.error.message}`);
-          const b = await bucket.uploadToSignedUrl(slots[i].thumb.path, slots[i].thumb.token, thumb.blob, { contentType: "image/jpeg" });
-          images.push({ path: slots[i].full.path, thumbPath: b.error ? null : slots[i].thumb.path, w: full.w, h: full.h });
-        }
+        const images = await uploadPhotos(files, slots, setProgress);
         setProgress("Saving…");
         await submitNewWork({ workId, ...f, images, showId: show.id });
         onDone(f.title.trim());
@@ -319,6 +303,7 @@ function WorkCard({ work: initial }: { work: Work }) {
   const router = useRouter();
   const [work, setWork] = useState(initial);
   const [editing, setEditing] = useState(false);
+  const [photos, setPhotos] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -363,11 +348,46 @@ function WorkCard({ work: initial }: { work: Work }) {
             <div className="flex items-start gap-2">
               <p className="font-medium">{work.title}</p>
               {!work.sold && (
-                <button onClick={begin} className="ml-auto shrink-0 text-xs text-muted hover:underline">
-                  Edit
-                </button>
+                <span className="ml-auto flex shrink-0 gap-3 text-xs text-muted">
+                  <button onClick={() => setPhotos(!photos)} className="hover:underline">
+                    Photos
+                  </button>
+                  <button onClick={begin} className="hover:underline">
+                    Edit
+                  </button>
+                </span>
               )}
             </div>
+            {work.photosRequested && !work.sold && (
+              <div className="mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-900 ring-1 ring-amber-200">
+                <p className="font-medium">ARRAE asked for better photos of this work.</p>
+                {work.photosRequestNote && <p className="mt-1 whitespace-pre-line">{work.photosRequestNote}</p>}
+                {!photos && (
+                  <button onClick={() => setPhotos(true)} className="mt-1.5 rounded-md bg-ink px-2.5 py-1 text-white">
+                    Upload new photos
+                  </button>
+                )}
+              </div>
+            )}
+            {photos && (
+              <div className="mt-2">
+                <PhotoManager
+                  intro="Straight on, in good natural light, filling the frame, without glare. The main photo is the one ARRAE sees first."
+                  actions={{
+                    list: () => getMyWorkPhotos(work.id),
+                    prepare: (n) => prepareMyPhotoUploads(work.id, n),
+                    add: async (imgs, asMain) => {
+                      const next = await addMyWorkPhotos(work.id, imgs, asMain);
+                      setWork((w) => ({ ...w, photosRequested: false }));
+                      return next;
+                    },
+                    makeMain: (id) => makeMyMainPhoto(work.id, id),
+                    remove: (id) => removeMyPhoto(work.id, id),
+                  }}
+                  onChange={(main) => setWork((w) => ({ ...w, image: main ? { id: main.id, thumb: main.thumb, full: main.full, w: main.w, h: main.h } : null }))}
+                />
+              </div>
+            )}
             <p className="text-xs text-muted">
               {[work.year, work.medium].filter(Boolean).join(" · ")}
               {work.year || work.medium ? " · " : ""}
@@ -411,5 +431,111 @@ function WorkCard({ work: initial }: { work: Work }) {
         )}
       </div>
     </li>
+  );
+}
+
+function BookTime({ b }: { b: StudioBookings[number] }) {
+  const router = useRouter();
+  const [changing, setChanging] = useState(!b.booking);
+  const [day, setDay] = useState(b.days[0]?.date ?? "");
+  const [start, setStart] = useState("");
+  const [note, setNote] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pending, run] = useTransition();
+  const what = b.kind === "dropoff" ? "drop-off" : "pick-up";
+  const slots = b.days.find((d) => d.date === day)?.slots ?? [];
+  const book = () =>
+    run(async () => {
+      setMsg(null);
+      try {
+        const r = await bookMyTime(b.id, start, note);
+        setMsg({ ok: true, text: `You're booked for ${fmtSlot(r.start, { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" })}. We've let ARRAE know.` });
+        setChanging(false);
+        setStart("");
+        router.refresh();
+      } catch (e) {
+        setMsg({ ok: false, text: (e as Error).message });
+      }
+    });
+  return (
+    <section className="mb-8 rounded-xl bg-white p-5 ring-1 ring-line">
+      <p className="text-xs uppercase tracking-[0.2em] text-muted">{b.show}</p>
+      <h2 className="font-display text-2xl">{b.booking ? `Your ${what}` : `Pick a ${what} time`}</h2>
+      <p className="mt-1 text-sm text-muted">
+        {b.kind === "dropoff" ? "Bring" : "Collect"}: {b.works.join(", ")}
+        {b.location ? ` · ${b.location}` : ""}
+      </p>
+      {b.note && <p className="mt-2 whitespace-pre-line text-sm">{b.note}</p>}
+      {b.booking && !changing && (
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-900 ring-1 ring-emerald-200">
+            {fmtSlot(b.booking.start, { weekday: "long", month: "long", day: "numeric" })} at {fmtSlot(b.booking.start, { hour: "numeric", minute: "2-digit" })}
+          </p>
+          <button onClick={() => setChanging(true)} className="text-sm underline">
+            Change time
+          </button>
+          <button
+            disabled={pending}
+            onClick={() =>
+              confirm(`Cancel your ${what}?`) &&
+              run(async () => {
+                await cancelMyBooking(b.booking!.id);
+                setChanging(true);
+                router.refresh();
+              })
+            }
+            className="text-sm text-rose-700 underline"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+      {changing &&
+        (b.days.length === 0 ? (
+          <p className="mt-4 text-sm text-muted">There are no open times left. Send us a message and we&rsquo;ll find one.</p>
+        ) : (
+          <div className="mt-4">
+            <div className="flex flex-wrap gap-2">
+              {b.days.map((d) => (
+                <button
+                  key={d.date}
+                  onClick={() => (setDay(d.date), setStart(""))}
+                  disabled={!d.slots.some((x) => x.left > 0)}
+                  className={`rounded-lg px-3 py-2 text-sm ring-1 disabled:opacity-40 ${day === d.date ? "bg-ink text-white ring-ink" : "bg-white ring-line"}`}
+                >
+                  {new Date(`${d.date}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" })}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {slots.map((x) => (
+                <button
+                  key={x.start}
+                  disabled={x.left < 1}
+                  onClick={() => setStart(x.start)}
+                  className={`rounded-md px-3 py-1.5 text-sm ring-1 disabled:line-through disabled:opacity-40 ${start === x.start ? "bg-ink text-white ring-ink" : "bg-paper ring-line"}`}
+                >
+                  {fmtSlot(x.start, { hour: "numeric", minute: "2-digit" })}
+                </button>
+              ))}
+            </div>
+            <label className="mt-3 block text-xs text-muted">
+              Anything we should know? (optional)
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="A friend is dropping off for me, I'm coming by car…" className={input} />
+            </label>
+            <div className="mt-3 flex items-center gap-3">
+              <button disabled={!start || pending} onClick={book} className="rounded-md bg-ink px-4 py-2 text-sm text-white disabled:opacity-40">
+                {pending ? "Booking…" : start ? `Book ${fmtSlot(start, { weekday: "short", hour: "numeric", minute: "2-digit" })}` : "Pick a time"}
+              </button>
+              {b.booking && (
+                <button onClick={() => setChanging(false)} className="text-sm text-muted underline">
+                  Keep my current time
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      {msg && <p className={`mt-3 rounded-md p-3 text-sm ring-1 ${msg.ok ? "bg-emerald-50 text-emerald-900 ring-emerald-200" : "bg-rose-50 text-rose-900 ring-rose-200"}`}>{msg.text}</p>}
+    </section>
   );
 }
