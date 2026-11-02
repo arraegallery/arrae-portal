@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema as s } from "@/db";
 import { signedImageUrls } from "./images";
 import type { ApplicationStatus, WorkStatus } from "./status";
@@ -295,6 +295,7 @@ export async function getArtistProfile(artistId: string) {
     db.select().from(s.waitlist).where(eq(s.waitlist.artistId, artistId)),
     db.select().from(s.workChanges).where(eq(s.workChanges.artistId, artistId)).orderBy(desc(s.workChanges.createdAt)),
   ]);
+  const messages = await db.select().from(s.artistMessages).where(eq(s.artistMessages.artistId, artistId)).orderBy(asc(s.artistMessages.createdAt));
   const workIds = works.map((w) => w.id);
   const [images, showWorks] = workIds.length
     ? await Promise.all([
@@ -318,6 +319,7 @@ export async function getArtistProfile(artistId: string) {
     artist,
     shows: shows.map((x) => ({ id: x.id, name: x.name, type: x.type, open: x.open })),
     showHistory,
+    messages: messages.map((m) => ({ id: m.id, sender: m.sender as "arrae" | "artist", body: m.body, at: m.createdAt.toISOString(), read: !!m.readByArraeAt })),
     changes: changes.map((c) => ({ id: c.id, workId: c.workId, field: c.field, oldValue: c.oldValue, newValue: c.newValue, actor: c.actor, role: c.actorRole, at: c.createdAt.toISOString() })),
     onWaitlist: waiting.length > 0,
     applications: apps.map((a) => ({ id: a.id, show: a.showId ? (showName.get(a.showId) ?? a.showId) : "No show", showId: a.showId, status: a.status, submittedOn: a.submittedOn })),
@@ -395,4 +397,50 @@ export async function getMessageRecipients() {
       };
     }),
   };
+}
+
+/** Latest message per artist, newest conversation first, with unread counts for ARRAE. */
+export async function getInbox() {
+  const rows = await db.select().from(s.artistMessages).orderBy(desc(s.artistMessages.createdAt)).limit(2000);
+  const artists = await db.select({ id: s.artists.id, name: s.artists.name }).from(s.artists);
+  const nameOf = new Map(artists.map((a) => [a.id, a.name]));
+  const byArtist = new Map<string, { artistId: string; name: string; last: { body: string; sender: string; at: string }; unread: number; total: number }>();
+  for (const m of rows) {
+    const cur = byArtist.get(m.artistId) ?? { artistId: m.artistId, name: nameOf.get(m.artistId) ?? m.artistId, last: { body: m.body, sender: m.sender, at: m.createdAt.toISOString() }, unread: 0, total: 0 };
+    cur.total++;
+    if (m.sender === "artist" && !m.readByArraeAt) cur.unread++;
+    byArtist.set(m.artistId, cur);
+  }
+  return [...byArtist.values()];
+}
+
+export async function getUnreadCount() {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(s.artistMessages)
+    .where(and(eq(s.artistMessages.sender, "artist"), isNull(s.artistMessages.readByArraeAt)));
+  return row?.n ?? 0;
+}
+
+/** Every show with its settings and how many artists and works it has. */
+export async function getShowsAdmin() {
+  const shows = await db.select().from(s.shows).orderBy(desc(s.shows.createdAt));
+  const apps = await db.select({ showId: s.applications.showId, status: s.applications.status }).from(s.applications);
+  const works = await db.select({ showId: s.showWorks.showId, status: s.showWorks.status }).from(s.showWorks);
+  return shows.map((x) => ({
+    id: x.id,
+    name: x.name,
+    type: x.type,
+    opensOn: x.opensOn,
+    closesOn: x.closesOn,
+    applicationDeadline: x.applicationDeadline,
+    decisionsDueOn: x.decisionsDueOn,
+    description: x.description,
+    openForSubmissions: x.openForSubmissions,
+    decisionsReleased: x.decisionsReleased,
+    artists: apps.filter((a) => a.showId === x.id).length,
+    selectedArtists: apps.filter((a) => a.showId === x.id && a.status === "Selected").length,
+    works: works.filter((w) => w.showId === x.id).length,
+    selectedWorks: works.filter((w) => w.showId === x.id && w.status === "Selected").length,
+  }));
 }

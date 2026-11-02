@@ -29,6 +29,13 @@
       "when": 1793637153714,
       "tag": "0003_artist_portal",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793637517347,
+      "tag": "0004_decisions_released",
+      "breakpoints": true
     }
   ]
 }

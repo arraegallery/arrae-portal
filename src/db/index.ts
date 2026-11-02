@@ -44,6 +44,9 @@ function serial<T>(run: () => PromiseLike<T>): Promise<T> {
 type Unsafe = typeof client.unsafe;
 const gated = new Proxy(client, {
   get(target, prop, receiver) {
+    // A transaction holds the connection until it ends, so it takes its turn in the
+    // gate as a whole; the queries inside it run one after another on their own.
+    if (prop === "begin") return (...args: Parameters<typeof client.begin>) => serial(() => target.begin(...args));
     if (prop !== "unsafe") return Reflect.get(target, prop, receiver);
     return (...args: Parameters<Unsafe>) => {
       // drizzle either awaits the query or calls .values() on it, then awaits.
