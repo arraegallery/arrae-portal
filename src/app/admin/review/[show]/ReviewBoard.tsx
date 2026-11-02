@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import Link from "next/link";
+import { ShowTabs } from "@/components/ShowTabs";
 import { addNote, addToSandbox, removeFromSandbox, setApplicationStatus, setWorkStatus } from "../../actions";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { BoardEntry, BoardWork } from "@/lib/queries";
@@ -82,13 +82,18 @@ export function ReviewBoard({
   const artistsDecided = entries.filter((e) => e.application && !OPEN.includes(e.application.status)).length;
   const applicants = entries.filter((e) => e.application).length;
 
-  function updateWork(artistId: string, workId: string, next: WorkStatus) {
+  // Clicking the decision that is already chosen undoes it, back to "In review".
+  function updateWork(artistId: string, workId: string, picked: WorkStatus) {
+    const current = entries.find((e) => e.artist.id === artistId)?.works.find((w) => w.id === workId)?.status;
+    const next: WorkStatus = current === picked ? "In review" : picked;
     setEntries((es) =>
       es.map((e) => (e.artist.id !== artistId ? e : { ...e, works: e.works.map((w) => (w.id === workId ? { ...w, status: next } : w)) })),
     );
     startTransition(() => setWorkStatus(show.id, workId, next));
   }
-  function updateApplication(artistId: string, applicationId: string, next: ApplicationStatus) {
+  function updateApplication(artistId: string, applicationId: string, picked: ApplicationStatus) {
+    const current = entries.find((e) => e.artist.id === artistId)?.application?.status;
+    const next: ApplicationStatus = current === picked ? "In review" : picked;
     setEntries((es) =>
       es.map((e) =>
         e.artist.id !== artistId || !e.application
@@ -97,6 +102,14 @@ export function ReviewBoard({
       ),
     );
     startTransition(() => setApplicationStatus(applicationId, next));
+  }
+
+  function saveNote(artistId: string, body: string, workId?: string) {
+    const text = body.trim();
+    if (!text) return;
+    const local = { id: -Date.now(), body: text, actor: "You", kind: "note", workId: workId ?? null, createdAt: new Date().toISOString() };
+    setEntries((es) => es.map((e) => (e.artist.id === artistId ? { ...e, notes: [local, ...e.notes] } : e)));
+    startTransition(() => addNote(artistId, text, show.id, workId));
   }
 
   const artist = entries.find((e) => e.artist.id === openArtist) ?? null;
@@ -122,13 +135,10 @@ export function ReviewBoard({
 
   return (
     <main className="mx-auto max-w-[1600px] px-4 pb-24">
-      <section className="flex flex-wrap items-end justify-between gap-4 py-6">
+      <section className="flex flex-wrap items-end justify-between gap-4 pt-6">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted">{show.type} review</p>
           <h1 className="font-display text-4xl">{show.name}</h1>
-          <Link href={`/admin/sandbox/${show.id}`} className="text-sm text-muted underline">
-            Open the {show.name} sandbox ({sandbox.size})
-          </Link>
         </div>
         <dl className="flex gap-6 text-sm">
           <div>
@@ -153,8 +163,9 @@ export function ReviewBoard({
           </div>
         </dl>
       </section>
+      <ShowTabs showId={show.id} active="review" sandboxCount={sandbox.size} />
 
-      <section className="z-20 -mx-4 md:sticky md:top-[57px] mb-6 flex flex-wrap items-center gap-2 border-y border-line bg-paper/95 px-4 py-2 text-sm backdrop-blur">
+      <section className="z-20 -mx-4 md:sticky md:top-[57px] mb-6 mt-4 flex flex-wrap items-center gap-2 border-y border-line bg-paper/95 px-4 py-2 text-sm backdrop-blur">
         <div className="flex rounded-md bg-white p-0.5 ring-1 ring-line">
           {(["artists", "works"] as View[]).map((v) => (
             <button key={v} onClick={() => setView(v)} className={`rounded px-3 py-1 ${view === v ? "bg-ink text-white" : ""}`}>
@@ -305,13 +316,20 @@ export function ReviewBoard({
                 ))}
               </div>
               <p className="mt-2 text-xs text-muted">Artist will see: “{artistFacingWork(lightboxWork.status, show.name)}”</p>
+              <p className="mt-1 text-xs text-muted">Chose the wrong one? Click it again to undo.</p>
             </div>
+            <NotesBox
+              key={lightboxWork.id}
+              title="Internal notes on this work"
+              notes={lightbox.notes.filter((n) => n.kind === "note" && n.workId === lightboxWork.id)}
+              onAdd={(body) => saveNote(lightbox.artist.id, body, lightboxWork.id)}
+            />
             <p className="mt-8 text-xs text-muted">Use ← → to move between works.</p>
           </aside>
         </div>
       )}
 
-      {artist && <ArtistDrawer entry={artist} showId={show.id} showName={show.name} onClose={() => setOpenArtist(null)} onDecide={updateApplication} onOpenWork={(id) => setOpenWork({ artistId: artist.artist.id, workId: id })} />}
+      {artist && <ArtistDrawer entry={artist} showId={show.id} showName={show.name} onClose={() => setOpenArtist(null)} onDecide={updateApplication} onAddNote={(body) => saveNote(artist.artist.id, body)} onOpenWork={(id) => setOpenWork({ artistId: artist.artist.id, workId: id })} />}
     </main>
   );
 }
@@ -384,6 +402,7 @@ function ArtistDrawer({
   showName,
   onClose,
   onDecide,
+  onAddNote,
   onOpenWork,
 }: {
   entry: BoardEntry;
@@ -391,11 +410,11 @@ function ArtistDrawer({
   showName: string;
   onClose: () => void;
   onDecide: (artistId: string, applicationId: string, s: ApplicationStatus) => void;
+  onAddNote: (body: string) => void;
   onOpenWork: (workId: string) => void;
 }) {
-  const [note, setNote] = useState("");
-  const [pending, startTransition] = useTransition();
   const a = entry.artist;
+  const titleOf = new Map(entry.works.map((w) => [w.id, w.title]));
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onClick={onClose}>
       <aside className="h-full w-full max-w-xl overflow-y-auto bg-paper p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
@@ -434,8 +453,16 @@ function ArtistDrawer({
               ))}
             </div>
             <p className="mt-2 text-xs text-muted">Artist will see: “{artistFacingApplication(entry.application.status, showName)}”</p>
+            <p className="mt-1 text-xs text-muted">Chose the wrong one? Click it again to undo.</p>
           </section>
         )}
+
+        <NotesBox
+          title="Internal notes"
+          notes={entry.notes.filter((n) => n.kind === "note")}
+          labelFor={(n) => (n.workId ? titleOf.get(n.workId) ?? "A work" : null)}
+          onAdd={onAddNote}
+        />
 
         <div className="mt-5 grid grid-cols-3 gap-2">
           {entry.works.map((w) => (
@@ -459,32 +486,78 @@ function ArtistDrawer({
           </section>
         )}
 
-        <section className="mt-6">
-          <h3 className="text-xs uppercase tracking-wider text-muted">Private notes</h3>
-          <form
-            className="mt-2 flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const body = note;
-              setNote("");
-              startTransition(() => addNote(a.id, body, showId));
-            }}
-          >
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Only you can see this" className="flex-1 rounded-md bg-white px-3 py-2 text-sm ring-1 ring-line" />
-            <button disabled={pending || !note.trim()} className="rounded-md bg-ink px-3 text-sm text-white disabled:opacity-40">
-              Add
-            </button>
-          </form>
-          <ul className="mt-3 space-y-2 text-sm">
-            {entry.notes.map((n) => (
-              <li key={n.id} className={n.kind === "note" ? "" : "text-muted"}>
-                <span className="text-xs text-muted">{new Date(n.createdAt).toLocaleDateString()} · </span>
-                {n.body}
-              </li>
-            ))}
-          </ul>
-        </section>
+        {entry.notes.some((n) => n.kind !== "note") && (
+          <details className="mt-6">
+            <summary className="cursor-pointer text-xs uppercase tracking-wider text-muted">Decision history</summary>
+            <ul className="mt-2 space-y-1 text-sm text-muted">
+              {entry.notes
+                .filter((n) => n.kind !== "note")
+                .map((n) => (
+                  <li key={n.id}>
+                    <span className="text-xs">{new Date(n.createdAt).toLocaleDateString()} · </span>
+                    {n.body}
+                  </li>
+                ))}
+            </ul>
+          </details>
+        )}
       </aside>
     </div>
+  );
+}
+
+function NotesBox({
+  title,
+  notes,
+  onAdd,
+  labelFor,
+}: {
+  title: string;
+  notes: BoardEntry["notes"];
+  onAdd: (body: string) => void;
+  labelFor?: (n: BoardEntry["notes"][number]) => string | null;
+}) {
+  const [draft, setDraft] = useState("");
+  const submit = () => {
+    if (!draft.trim()) return;
+    onAdd(draft);
+    setDraft("");
+  };
+  return (
+    <section className="mt-6 rounded-lg bg-white p-4 ring-1 ring-line">
+      <h3 className="text-xs uppercase tracking-wider text-muted">{title}</h3>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
+        }}
+        placeholder="Only ARRAE can see this. Artists never do."
+        className="mt-2 h-20 w-full rounded-md bg-paper p-2 text-sm ring-1 ring-line"
+      />
+      <div className="mt-1 flex items-center justify-between">
+        <span className="text-[11px] text-muted">⌘ + Enter to save</span>
+        <button onClick={submit} disabled={!draft.trim()} className="rounded-md bg-ink px-3 py-1 text-sm text-white disabled:opacity-40">
+          Save note
+        </button>
+      </div>
+      {notes.length > 0 && (
+        <ul className="mt-3 space-y-3 border-t border-line pt-3 text-sm">
+          {notes.map((n) => {
+            const label = labelFor?.(n);
+            return (
+              <li key={n.id}>
+                <p className="text-[11px] text-muted">
+                  {new Date(n.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                  {label ? ` · on “${label}”` : ""}
+                </p>
+                <p className="whitespace-pre-line">{n.body}</p>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
