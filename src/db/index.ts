@@ -19,7 +19,10 @@ const client =
   globalForDb.pg ??
   postgres(url, {
     prepare: false,
-    max: 5,
+    // One socket per server. Live timing (/admin/health) showed queries run one at a
+    // time answer in 5-40ms, but opening extra sockets in parallel through the
+    // pooler never answers, so queries queue on a single connection instead.
+    max: 1,
     ...({ max_pipeline: 1 } as object), // supported at runtime, missing from the types
     idle_timeout: 5,
     max_lifetime: 60,
