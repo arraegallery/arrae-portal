@@ -1,10 +1,12 @@
 "use server";
 
-import { and, asc, eq, gt, inArray, lt, desc, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lt, desc, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema as s } from "@/db";
 import { requireAdmin } from "@/lib/auth";
 import { APPLICATION_STATUSES, WORK_STATUSES, type ApplicationStatus, type WorkStatus } from "@/lib/status";
+import { ensureApplication } from "@/lib/applications";
+import { notifyNewMessage } from "@/lib/notify";
 import { ARTIST_ONBOARDING, SHOW_ONBOARDING, readOnboarding } from "@/lib/onboarding";
 import { fetchStoreCollections, matchCollections } from "@/lib/shopify-bios";
 import { recordWorkChanges, TRACKED_FIELDS } from "@/lib/changes";
@@ -316,21 +318,6 @@ export async function addWorksToShow(workIds: string[], showId: string) {
   revalidatePath("/admin", "layout");
 }
 
-/** Makes sure an artist has an application row for a show, so they appear on its review board. */
-async function ensureApplication(artistId: string, showId: string) {
-  const [existing] = await db
-    .select({ id: s.applications.id })
-    .from(s.applications)
-    .where(and(eq(s.applications.artistId, artistId), eq(s.applications.showId, showId)));
-  if (existing) return existing.id;
-  const id = `app_${showId}_${artistId}`.slice(0, 120);
-  await db
-    .insert(s.applications)
-    .values({ id, artistId, showId, status: "New", submittedOn: new Date().toISOString().slice(0, 10) })
-    .onConflictDoNothing();
-  return id;
-}
-
 export async function updateWork(
   workId: string,
   fields: { title?: string; year?: string; medium?: string; category?: string; description?: string; price?: string; width?: string; height?: string; depth?: string; unit?: string },
@@ -445,4 +432,72 @@ export async function fillBiosFromShopify() {
   }
   revalidatePath("/admin/artists", "layout");
   return { filled, kept: kept.length, unmatched: unmatched.map((c) => c.title) };
+}
+
+// ---- Conversations with artists ----
+
+export async function sendMessageToArtist(artistId: string, body: string) {
+  const actor = await requireAdmin();
+  const text = body.trim().slice(0, 5000);
+  if (!text) throw new Error("Write a message first");
+  const [artist] = await db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email }).from(s.artists).where(eq(s.artists.id, artistId));
+  if (!artist) throw new Error("Unknown artist");
+  const [row] = await db.insert(s.artistMessages).values({ artistId, sender: "arrae", body: text, actor, readByArraeAt: new Date() }).returning();
+  if (artist.email.includes("@")) await notifyNewMessage({ to: artist.email.trim(), artistName: artist.name, preview: text });
+  revalidatePath(`/admin/artists/${artistId}`);
+  revalidatePath("/admin/inbox");
+  return { id: row.id, sender: "arrae" as const, body: row.body, at: row.createdAt.toISOString(), read: true };
+}
+
+export async function markArtistMessagesRead(artistId: string) {
+  await requireAdmin();
+  await db
+    .update(s.artistMessages)
+    .set({ readByArraeAt: new Date() })
+    .where(and(eq(s.artistMessages.artistId, artistId), eq(s.artistMessages.sender, "artist"), isNull(s.artistMessages.readByArraeAt)));
+}
+
+// ---- Shows ----
+
+type ShowFields = {
+  name?: string;
+  type?: string;
+  opensOn?: string;
+  closesOn?: string;
+  applicationDeadline?: string;
+  decisionsDueOn?: string;
+  description?: string;
+  openForSubmissions?: boolean;
+  decisionsReleased?: boolean;
+};
+
+export async function updateShow(showId: string, fields: ShowFields) {
+  const actor = await requireAdmin();
+  const date = (v?: string) => (v === undefined ? undefined : /^\d{4}-\d{2}-\d{2}$/.test(v.trim()) ? v.trim() : null);
+  const set: Partial<typeof s.shows.$inferInsert> = {};
+  if (fields.name !== undefined) {
+    const n = fields.name.trim().slice(0, 200);
+    if (!n) throw new Error("Give the show a name");
+    set.name = n;
+  }
+  if (fields.type !== undefined) {
+    if (!["Volume", "Takeover", "ARRAE Finds"].includes(fields.type)) throw new Error("Unknown show type");
+    set.type = fields.type as "Volume" | "Takeover" | "ARRAE Finds";
+  }
+  for (const k of ["opensOn", "closesOn", "applicationDeadline", "decisionsDueOn"] as const) {
+    const d = date(fields[k]);
+    if (d !== undefined) set[k] = d;
+  }
+  if (fields.description !== undefined) set.description = fields.description.trim().slice(0, 4000) || null;
+  if (fields.openForSubmissions !== undefined) set.openForSubmissions = !!fields.openForSubmissions;
+  if (fields.decisionsReleased !== undefined) set.decisionsReleased = !!fields.decisionsReleased;
+  if (!Object.keys(set).length) return;
+  await db.update(s.shows).set(set).where(eq(s.shows.id, showId));
+  const notes = [
+    set.openForSubmissions !== undefined ? (set.openForSubmissions ? "opened to artist submissions" : "closed to artist submissions") : "",
+    set.decisionsReleased !== undefined ? (set.decisionsReleased ? "decisions released to artists" : "decisions hidden from artists") : "",
+  ].filter(Boolean);
+  await log({ showId, kind: "show", body: `Show ${notes.length ? notes.join(", ") : `details edited: ${Object.keys(set).join(", ")}`}`, actor });
+  revalidatePath("/admin", "layout");
+  revalidatePath("/studio", "layout");
 }

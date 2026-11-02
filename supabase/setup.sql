@@ -186,4 +186,9 @@ ALTER TABLE "work_changes" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "artist_messages" ENABLE ROW LEVEL SECURITY;
 UPDATE "shows" SET "open_for_submissions" = true WHERE "id" = 'volume-iv';
 INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('a0fcec8cf44c14f37b367717dccc4a6affe8f9575da5f5a568c5b5f6215f0fdf', 1793637153714);
+
+-- 0004_decisions_released
+ALTER TABLE "shows" ADD COLUMN "decisions_released" boolean DEFAULT false NOT NULL;
+UPDATE "shows" SET "decisions_released" = true WHERE "id" IN ('volume-i', 'volume-ii', 'volume-iii');
+INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('f6ce6994e5d0364cb9ffb6aba428ec73f7965a5f4ff2f6332b027f66e5168db8', 1793637517347);
 COMMIT;

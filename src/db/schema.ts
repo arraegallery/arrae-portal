@@ -46,6 +46,8 @@ export const shows = pgTable("shows", {
   decisionsDueOn: date("decisions_due_on"),
   /** Shown to artists in their portal, where they can submit or put works forward. */
   openForSubmissions: boolean("open_for_submissions").default(false).notNull(),
+  /** Until this is on, artists see "Under review" instead of the decision. */
+  decisionsReleased: boolean("decisions_released").default(false).notNull(),
   description: text("description"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

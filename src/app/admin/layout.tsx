@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
-import { getShows } from "@/lib/queries";
+import { getShows, getUnreadCount } from "@/lib/queries";
 import { ShowsMenu } from "@/components/ShowsMenu";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const email = await requireAdmin();
   const shows = await getShows();
+  const unread = await getUnreadCount();
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur">
@@ -35,8 +36,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <Link href="/admin/waitlist" className="rounded-md px-2 py-1 hover:bg-white">
               Waitlist
             </Link>
+            <Link href="/admin/inbox" className="rounded-md px-2 py-1 hover:bg-white">
+              Inbox{unread > 0 && <span className="ml-1 rounded-full bg-ink px-1.5 py-0.5 text-[10px] text-white">{unread}</span>}
+            </Link>
             <Link href="/admin/messages" className="rounded-md px-2 py-1 hover:bg-white">
-              Messages
+              Email artists
+            </Link>
+            <Link href="/admin/shows" className="rounded-md px-2 py-1 hover:bg-white">
+              Shows
             </Link>
 <ShowsMenu shows={shows.map((s) => ({ id: s.id, name: s.name, type: s.type }))} />
           </nav>

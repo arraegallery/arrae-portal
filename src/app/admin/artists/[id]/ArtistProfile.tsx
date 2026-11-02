@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { addNote, addWorksToShow, setOnboardingStep, updateArtist, updateWork } from "../../actions";
+import { addNote, addWorksToShow, sendMessageToArtist, setOnboardingStep, updateArtist, updateWork } from "../../actions";
+import { Thread } from "@/components/Thread";
 import { ARTIST_ONBOARDING, SHOW_ONBOARDING, readOnboarding, type Onboarding } from "@/lib/onboarding";
 import { TRACKED_FIELDS } from "@/lib/change-fields";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
@@ -206,6 +207,11 @@ export function ArtistProfile({ profile }: { profile: Profile }) {
               <WorkRow key={w.id} work={w} shows={profile.shows} changes={profile.changes.filter((c) => c.workId === w.id)} />
             ))}
           </ul>
+          <section id="messages" className="mt-8 scroll-mt-20">
+            <h2 className="text-xs uppercase tracking-wider text-muted">Messages with {saved.name.split(/\s+/)[0]}</h2>
+            <p className="mb-2 mt-1 text-xs text-muted">The artist sees this conversation in their studio and gets an email when you write.</p>
+            <Thread initial={profile.messages} me="arrae" otherName={saved.name.split(/\s+/)[0]} send={(body) => sendMessageToArtist(a.id, body)} placeholder={`Write to ${saved.name}…`} />
+          </section>
           <ArtistNotes artistId={a.id} notes={profile.notes} works={profile.works} />
         </section>
       </div>
