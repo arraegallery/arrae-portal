@@ -1,4 +1,4 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db, schema as s } from "@/db";
 import { teamRoleFor } from "./team";
@@ -39,5 +39,21 @@ export async function requireArtist() {
     if (signup) redirect("/apply/start");
     redirect("/login?error=no-artist");
   }
-  return { email, artist: records[0], artistIds: records.map((r) => r.id) };
+  const artistIds = records.map((r) => r.id);
+  await markSeen(artistIds);
+  return { email, artist: records[0], artistIds };
+}
+
+/** Records the visit for the "Last signed in" column, at most once every 10 minutes. */
+async function markSeen(artistIds: string[]) {
+  const now = new Date();
+  const stale = new Date(now.getTime() - 10 * 60 * 1000);
+  try {
+    await db
+      .update(s.artists)
+      .set({ lastSeenAt: now })
+      .where(and(inArray(s.artists.id, artistIds), or(isNull(s.artists.lastSeenAt), lt(s.artists.lastSeenAt, stale))));
+  } catch (e) {
+    console.error("markSeen failed", e);
+  }
 }

@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { fillBiosFromShopify } from "../actions";
 
-type Row = { id: string; name: string; email: string; works: number; everSelected: boolean; hasArraeBio: boolean };
+type Row = { id: string; name: string; email: string; works: number; everSelected: boolean; hasArraeBio: boolean; lastSeen: string | null };
+
+const seenFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
 export function ArtistDirectory({ artists, owner }: { artists: Row[]; owner: boolean }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"all" | "roster" | "needs-bio">("all");
+  const [bySeen, setBySeen] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -35,6 +38,7 @@ export function ArtistDirectory({ artists, owner }: { artists: Row[]; owner: boo
       (!needle || a.name.toLowerCase().includes(needle) || a.email.toLowerCase().includes(needle)) &&
       (filter === "all" || (filter === "roster" && a.everSelected) || (filter === "needs-bio" && a.everSelected && !a.hasArraeBio)),
   );
+  if (bySeen) shown.sort((a, b) => (b.lastSeen ?? "").localeCompare(a.lastSeen ?? ""));
   return (
     <main className="mx-auto max-w-5xl px-4 pb-24">
       <section className="flex flex-wrap items-end justify-between gap-4 py-6">
@@ -54,6 +58,9 @@ export function ArtistDirectory({ artists, owner }: { artists: Row[]; owner: boo
               {label}
             </button>
           ))}
+          <button onClick={() => setBySeen(!bySeen)} className={`rounded-full px-3 py-1 ring-1 ${bySeen ? "bg-ink text-white ring-ink" : "bg-white ring-line"}`} title="Sort by the last time each artist signed in">
+            Recently signed in
+          </button>
           {owner && (
             <button onClick={fill} disabled={pending} className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line disabled:opacity-50" title="Copies each artist collection's description from arraegallery.com into ARRAE bios that are still empty">
               {pending ? "Filling…" : "Fill bios from Shopify"}
@@ -71,6 +78,9 @@ export function ArtistDirectory({ artists, owner }: { artists: Row[]; owner: boo
               <span className="font-display text-lg">{a.name}</span>
               <span className="truncate text-sm text-muted">{a.email}</span>
               <span className="ml-auto shrink-0 text-xs text-muted">{a.works} works</span>
+              <span className="w-60 shrink-0 text-right text-xs text-muted" title="Last time this artist signed in to the portal" suppressHydrationWarning>
+                {a.lastSeen ? `Last signed in ${seenFmt.format(new Date(a.lastSeen))}` : "Never signed in"}
+              </span>
               {a.everSelected && !a.hasArraeBio && <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800 ring-1 ring-amber-200">Needs ARRAE bio</span>}
             </Link>
           </li>

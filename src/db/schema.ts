@@ -70,6 +70,8 @@ export const artists = pgTable("artists", {
   onboarding: jsonb("onboarding").$type<Record<string, unknown>>().default({}).notNull(),
   shopifyCollectionHandle: text("shopify_collection_handle"),
   airtableRecordIds: text("airtable_record_ids").array().default([]).notNull(),
+  /** When the artist last signed in or opened their studio (updated at most every 10 minutes). */
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
