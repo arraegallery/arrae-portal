@@ -15,7 +15,7 @@ export default async function ApplyPage({ searchParams }: { searchParams: Promis
   const email = await signedInEmail();
   const open = await db.select({ id: s.shows.id, name: s.shows.name, deadline: s.shows.applicationDeadline }).from(s.shows).where(eq(s.shows.openForSubmissions, true)).orderBy(asc(s.shows.name));
   return (
-    <main className="mx-auto max-w-xl px-4 py-12">
+    <main className="mx-auto max-w-xl px-4 pb-12 pt-20">
       <p className="text-xs uppercase tracking-[0.2em] text-muted">ARRAE Gallery · Coconut Grove</p>
       <h1 className="mt-1 font-display text-4xl">Apply to show with ARRAE</h1>
       <p className="mt-3 text-sm leading-relaxed text-muted">

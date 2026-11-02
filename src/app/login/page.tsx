@@ -28,14 +28,14 @@ async function sendLink(formData: FormData) {
 export default async function Login({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
-      <h1>
+    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4 text-center">
+      <h1 className="flex justify-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/arrae-logo.png" alt="ARRAE" width={858} height={310} className="h-12 w-auto" />
+        <img src="/arrae-logo.png" alt="ARRAE" width={858} height={310} className="mx-auto h-12 w-auto" />
       </h1>
-      <p className="mt-1 text-sm text-muted">Artists and ARRAE team: sign in with your email. We'll send you a link.</p>
+      <p className="mt-6 text-sm text-muted">Artists and ARRAE team: sign in with your email. We'll send you a link.</p>
       {error && MESSAGES[error] && <p className="mt-4 rounded-md bg-white p-3 text-sm ring-1 ring-line">{MESSAGES[error]}</p>}
-      <form action={sendLink} className="mt-6 flex flex-col gap-3">
+      <form action={sendLink} className="mt-8 flex text-left flex-col gap-3">
         <input
           name="email"
           type="email"

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db, schema as s } from "@/db";
 import { signedImageUrls } from "./images";
 import type { ApplicationStatus, WorkStatus } from "./status";
@@ -83,6 +83,20 @@ export async function getBoard(showId: string) {
   });
 
   const waitingSet = new Set(waiting.map((w) => w.id));
+  // Roster = selected for any other show before (an accepted application or a selected work),
+  // whether or not they sent an application this time.
+  const [pastApps, pastWorks] = await Promise.all([
+    db
+      .select({ artistId: s.applications.artistId })
+      .from(s.applications)
+      .where(and(inArray(s.applications.artistId, artistIds), eq(s.applications.status, "Selected"), ne(s.applications.showId, showId))),
+    db
+      .select({ artistId: s.works.artistId })
+      .from(s.showWorks)
+      .innerJoin(s.works, eq(s.works.id, s.showWorks.workId))
+      .where(and(inArray(s.works.artistId, artistIds), eq(s.showWorks.status, "Selected"), ne(s.showWorks.showId, showId))),
+  ]);
+  const rosterSet = new Set([...pastApps, ...pastWorks].map((x) => x.artistId));
   // Newest application per artist for this show
   const appByArtist = new Map<string, (typeof apps)[number]>();
   for (const a of apps.sort((x, y) => String(x.submittedOn).localeCompare(String(y.submittedOn)))) appByArtist.set(a.artistId, a);
@@ -102,7 +116,7 @@ export async function getBoard(showId: string) {
         shopifyCollectionHandle: a.shopifyCollectionHandle,
       },
       application: app ? { id: app.id, status: app.status, submittedOn: app.submittedOn, flag: app.flag } : null,
-      group: app ? "New applicant" : "Roster artist",
+      group: rosterSet.has(a.id) ? "Roster artist" : "New applicant",
       onWaitlist: waitingSet.has(a.id),
       works: rows
         .filter((r) => r.work.artistId === a.id)
@@ -444,4 +458,53 @@ export async function getShowsAdmin() {
     works: works.filter((w) => w.showId === x.id).length,
     selectedWorks: works.filter((w) => w.showId === x.id && w.status === "Selected").length,
   }));
+}
+
+// ---- New submissions (the red dot) ----
+
+const seenKey = (email: string) => `submissions_seen:${email.toLowerCase()}`;
+const isNewSubmission = and(eq(s.activity.kind, "submission"), sql`${s.activity.body} not like 'Artist withdrew%'`);
+
+async function submissionsSeenAt(email: string) {
+  const [row] = await db.select().from(s.appSettings).where(eq(s.appSettings.key, seenKey(email)));
+  // First visit: count the last 7 days so the dot starts meaningful, not with every past application.
+  return row ? new Date(row.value) : new Date(Date.now() - 7 * 864e5);
+}
+
+/** Applications and works that came in since this team member last opened the New page. */
+export async function getNewSubmissionCount(email: string) {
+  const since = await submissionsSeenAt(email);
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(s.activity)
+    .where(and(isNewSubmission, sql`${s.activity.createdAt} > ${since.toISOString()}`));
+  return row?.n ?? 0;
+}
+
+/** The latest submissions, newest first, each marked if it came in since the last visit. */
+export async function getRecentSubmissions(email: string) {
+  const since = await submissionsSeenAt(email);
+  const rows = await db
+    .select({ a: s.activity, artist: s.artists.name, show: s.shows.name })
+    .from(s.activity)
+    .leftJoin(s.artists, eq(s.artists.id, s.activity.artistId))
+    .leftJoin(s.shows, eq(s.shows.id, s.activity.showId))
+    .where(eq(s.activity.kind, "submission"))
+    .orderBy(desc(s.activity.createdAt))
+    .limit(150);
+  return rows.map(({ a, artist, show }) => ({
+    id: a.id,
+    artistId: a.artistId,
+    artist: artist ?? "Unknown artist",
+    showId: a.showId,
+    show,
+    body: a.body,
+    at: a.createdAt.toISOString(),
+    unseen: a.createdAt > since && !a.body.startsWith("Artist withdrew"),
+  }));
+}
+
+export async function markSubmissionsSeen(email: string) {
+  const value = new Date().toISOString();
+  await db.insert(s.appSettings).values({ key: seenKey(email), value }).onConflictDoUpdate({ target: s.appSettings.key, set: { value } });
 }

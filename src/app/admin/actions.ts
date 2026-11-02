@@ -321,7 +321,7 @@ export async function addWorksToShow(workIds: string[], showId: string) {
 
 export async function updateWork(
   workId: string,
-  fields: { title?: string; year?: string; medium?: string; category?: string; description?: string; price?: string; width?: string; height?: string; depth?: string; unit?: string },
+  fields: { title?: string; year?: string; medium?: string; category?: string; description?: string; price?: string; width?: string; height?: string; depth?: string; unit?: string; sold?: string },
 ) {
   const actor = (await requireTeam()).email;
   const num = (v?: string) => {
@@ -344,9 +344,11 @@ export async function updateWork(
   }
   if (fields.unit !== undefined) set.unit = fields.unit === "cm" ? "cm" : "in";
   if (set.width !== undefined || set.height !== undefined) set.sizeConfidence = "high";
-  if (!Object.keys(set).length) return;
   const [before] = await db.select().from(s.works).where(eq(s.works.id, workId));
   if (!before) throw new Error("That work no longer exists");
+  // "Sold" only changes when it flips, so re-saving keeps the original sold date.
+  if (fields.sold !== undefined && !!fields.sold !== !!before.soldAt) set.soldAt = fields.sold ? new Date() : null;
+  if (!Object.keys(set).length) return;
   const [w] = await db.update(s.works).set(set).where(eq(s.works.id, workId)).returning({ artistId: s.works.artistId, title: s.works.title });
   const changed = await recordWorkChanges({ workId, artistId: w?.artistId ?? null, before, after: set, actor, role: "arrae" });
   if (changed.length) await log({ artistId: w?.artistId, workId, kind: "edit", body: `"${w?.title}" edited: ${changed.map((f) => TRACKED_FIELDS[f].toLowerCase()).join(", ")}`, actor });
