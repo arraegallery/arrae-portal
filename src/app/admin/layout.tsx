@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireTeam } from "@/lib/team";
-import { getShows, getUnreadCount } from "@/lib/queries";
+import { getNewSubmissionCount, getShows, getUnreadCount } from "@/lib/queries";
+import { SearchBox } from "@/components/SearchBox";
 import { ShowsMenu } from "@/components/ShowsMenu";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const owner = role === "owner";
   const shows = await getShows();
   const unread = await getUnreadCount();
+  const fresh = owner ? await getNewSubmissionCount(email) : 0;
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur">
@@ -29,6 +31,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                     {s.name}
                   </NavLink>
                 ))}
+            {owner && (
+              <NavLink href="/admin/new">
+                New
+                {fresh > 0 && (
+                  <span className="ml-1 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-medium text-white" aria-label={`${fresh} new`}>
+                    {fresh}
+                  </span>
+                )}
+              </NavLink>
+            )}
             {owner && <NavLink href="/admin/sandbox">Sandbox</NavLink>}
             <NavLink href="/admin/artists">Artists</NavLink>
             {owner && <NavLink href="/admin/waitlist">Waitlist</NavLink>}
@@ -42,7 +54,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             {owner && <NavLink href="/admin/team">Team</NavLink>}
             {owner && <ShowsMenu shows={shows.map((s) => ({ id: s.id, name: s.name, type: s.type }))} />}
           </nav>
-          <span className="ml-auto text-xs text-muted">
+          <SearchBox />
+          <span className="text-xs text-muted">
             {email}
             {!owner && " · team"}
           </span>

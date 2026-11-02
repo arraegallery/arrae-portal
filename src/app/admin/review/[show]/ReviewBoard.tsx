@@ -149,7 +149,12 @@ export function ReviewBoard({
         <dl className="flex gap-6 text-sm">
           <div>
             <dt className="text-muted">Artists</dt>
-            <dd className="text-xl">{entries.length}</dd>
+            <dd className="text-xl" title="Everyone with an application or a work in this show">
+              {entries.length}{" "}
+              <span className="text-sm text-muted">
+                ({entries.filter((e) => e.group === "New applicant").length} new, {entries.filter((e) => e.group === "Roster artist").length} roster)
+              </span>
+            </dd>
           </div>
           <div>
             <dt className="text-muted">Applications decided</dt>
