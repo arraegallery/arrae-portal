@@ -59,11 +59,12 @@ export async function setWorkStatus(showId: string, workId: string, status: Work
   revalidatePath("/admin", "layout");
 }
 
-export async function addNote(artistId: string, body: string, showId?: string) {
+/** A private curator note on an artist, or on one of their works when workId is given. */
+export async function addNote(artistId: string, body: string, showId?: string, workId?: string) {
   const actor = await requireAdmin();
   const text = body.trim();
   if (!text) return;
-  await log({ artistId, showId: showId ?? null, kind: "note", body: text.slice(0, 4000), actor });
+  await log({ artistId, workId: workId ?? null, showId: showId ?? null, kind: "note", body: text.slice(0, 4000), actor });
   revalidatePath("/admin", "layout");
 }
 

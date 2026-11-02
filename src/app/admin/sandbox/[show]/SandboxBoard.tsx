@@ -7,6 +7,7 @@ import { addToSandbox, createShow, promoteFromSandbox, removeFromSandbox, reorde
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { SandboxWork } from "@/lib/queries";
 import { STATUS_TONE } from "@/lib/status";
+import { ShowTabs } from "@/components/ShowTabs";
 
 type Show = { id: string; name: string; type: string };
 type Source = "all" | "show" | "waitlist" | "roster";
@@ -130,7 +131,7 @@ export function SandboxBoard({
 
   return (
     <main className="mx-auto max-w-[1600px] px-4 pb-24">
-      <section className="flex flex-wrap items-end justify-between gap-4 py-6">
+      <section className="flex flex-wrap items-end justify-between gap-4 pt-6">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted">Sandbox · private to ARRAE</p>
           <div className="flex flex-wrap items-center gap-3">
@@ -208,7 +209,9 @@ export function SandboxBoard({
         </dl>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <ShowTabs showId={show.id} active="sandbox" sandboxCount={items.length} />
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
         {/* The sandbox wall */}
         <section
           onDragOver={(e) => {
@@ -217,7 +220,7 @@ export function SandboxBoard({
           }}
           onDragLeave={() => setDropHint(false)}
           onDrop={(e) => onDropAt(e)}
-          className={`min-h-[60vh] rounded-xl border-2 border-dashed p-4 transition ${dropHint ? "border-ink/40 bg-white" : "border-line"}`}
+          className={`min-h-[60vh] rounded-xl border-2 border-dashed p-4 transition ${dropHint ? "border-ink/40 bg-[#ebe6dd]" : "border-[#d9d2c5] bg-[#f1ede6]"}`}
         >
           <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
             <span className="text-muted">{selected.size ? `${selected.size} selected` : "Tip: drag cards to reorder, or drag works in from the right."}</span>

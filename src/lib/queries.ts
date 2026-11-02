@@ -24,7 +24,7 @@ export type BoardWork = {
   inShopify: boolean;
   images: BoardImage[];
 };
-export type BoardNote = { id: number; body: string; actor: string | null; createdAt: string; kind: string };
+export type BoardNote = { id: number; body: string; actor: string | null; createdAt: string; kind: string; workId: string | null };
 export type BoardEntry = {
   artist: {
     id: string;
@@ -128,7 +128,7 @@ export async function getBoard(showId: string) {
         })),
       notes: notes
         .filter((n) => n.artistId === a.id)
-        .map((n) => ({ id: n.id, body: n.body, actor: n.actor, kind: n.kind, createdAt: n.createdAt.toISOString() })),
+        .map((n) => ({ id: n.id, body: n.body, actor: n.actor, kind: n.kind, workId: n.workId, createdAt: n.createdAt.toISOString() })),
     };
   });
 
