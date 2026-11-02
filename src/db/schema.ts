@@ -326,3 +326,26 @@ export const agreements = pgTable("agreements", {
   remindersSent: integer("reminders_sent").default(0).notNull(),
   lastRemindedAt: timestamp("last_reminded_at", { withTimezone: true }),
 });
+
+/**
+ * Files kept for one artist: invoices, payment statements, W-9s, certificates and so on.
+ * ARRAE or the artist can upload. Signed agreements are listed alongside from the agreements table.
+ */
+export const documents = pgTable("documents", {
+  id: text("id").primaryKey(),
+  artistId: text("artist_id")
+    .notNull()
+    .references(() => artists.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(), // invoice | payment | w9 | coa | contract | other
+  title: text("title").notNull(),
+  storagePath: text("storage_path").notNull(),
+  fileName: text("file_name").notNull(),
+  contentType: text("content_type"),
+  sizeBytes: integer("size_bytes"),
+  showId: text("show_id").references(() => shows.id, { onDelete: "set null" }),
+  note: text("note"),
+  visibleToArtist: boolean("visible_to_artist").default(true).notNull(),
+  uploadedBy: text("uploaded_by").notNull(),
+  uploadedByRole: text("uploaded_by_role").notNull(), // arrae | artist
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});

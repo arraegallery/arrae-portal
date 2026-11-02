@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireTeam } from "@/lib/team";
 import { getNewSubmissionCount, getShows, getUnreadCount } from "@/lib/queries";
 import { SearchBox } from "@/components/SearchBox";
-import { ShowsMenu } from "@/components/ShowsMenu";
+import { NavMenu, NavTop } from "@/components/NavMenu";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +12,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const shows = await getShows();
   const unread = await getUnreadCount();
   const fresh = owner ? await getNewSubmissionCount(email) : 0;
+  const volumes = shows.filter((s) => s.type === "Volume").slice(-2).reverse();
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur">
@@ -21,39 +22,55 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <img src="/arrae-logo.png" alt="ARRAE" width={858} height={310} className="h-6 w-auto" />
           </Link>
           <nav className="flex flex-wrap items-center gap-1 text-sm">
-            {owner &&
-              shows
-                .filter((s) => s.type === "Volume")
-                .slice(-2)
-                .reverse()
-                .map((s) => (
-                  <NavLink key={s.id} href={`/admin/review/${s.id}`}>
-                    {s.name}
-                  </NavLink>
-                ))}
-            {owner && (
-              <NavLink href="/admin/new">
-                New
-                {fresh > 0 && (
-                  <span className="ml-1 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-medium text-white" aria-label={`${fresh} new`}>
-                    {fresh}
-                  </span>
-                )}
-              </NavLink>
+            {owner ? (
+              <>
+                <NavMenu
+                  label="Shows"
+                  items={[
+                    ...volumes.map((s) => ({ href: `/admin/review/${s.id}`, label: `${s.name} review` })),
+                    { href: "/admin/sandbox", label: "Sandbox", hint: "plan a show" },
+                    ...shows.filter((s) => !volumes.includes(s)).map((s, i) => ({ href: `/admin/review/${s.id}`, label: s.name, hint: s.type, divider: i === 0 })),
+                    { href: "/admin/shows", label: "Show settings & applications", divider: true },
+                  ]}
+                />
+                <NavTop href="/admin/new" badge={fresh} tone="red">
+                  New
+                </NavTop>
+                <NavMenu
+                  label="Artists"
+                  items={[
+                    { href: "/admin/artists", label: "All artists" },
+                    { href: "/admin/waitlist", label: "Waitlist" },
+                    { href: "/admin/agreements", label: "Agreements" },
+                    { href: "/admin/documents", label: "Documents" },
+                  ]}
+                />
+                <NavMenu
+                  label="Messages"
+                  badge={unread}
+                  items={[
+                    { href: "/admin/inbox", label: "Inbox", badge: unread },
+                    { href: "/admin/messages", label: "Email artists" },
+                  ]}
+                />
+                <NavMenu
+                  label="Gallery"
+                  items={[
+                    { href: "/admin/logistics", label: "Logistics", hint: "drop-off & pick-up" },
+                    { href: "/admin/shopify", label: "Shopify" },
+                    { href: "/admin/team", label: "Team", divider: true },
+                  ]}
+                />
+              </>
+            ) : (
+              <>
+                <NavTop href="/admin/artists">Artists</NavTop>
+                <NavTop href="/admin/inbox" badge={unread}>
+                  Inbox
+                </NavTop>
+                <NavTop href="/admin/logistics">Logistics</NavTop>
+              </>
             )}
-            {owner && <NavLink href="/admin/sandbox">Sandbox</NavLink>}
-            <NavLink href="/admin/artists">Artists</NavLink>
-            {owner && <NavLink href="/admin/waitlist">Waitlist</NavLink>}
-            <NavLink href="/admin/inbox">
-              Inbox{unread > 0 && <span className="ml-1 rounded-full bg-ink px-1.5 py-0.5 text-[10px] text-white">{unread}</span>}
-            </NavLink>
-            <NavLink href="/admin/logistics">Logistics</NavLink>
-            {owner && <NavLink href="/admin/messages">Email artists</NavLink>}
-            {owner && <NavLink href="/admin/shows">Shows</NavLink>}
-            {owner && <NavLink href="/admin/agreements">Agreements</NavLink>}
-            {owner && <NavLink href="/admin/shopify">Shopify</NavLink>}
-            {owner && <NavLink href="/admin/team">Team</NavLink>}
-            {owner && <ShowsMenu shows={shows.map((s) => ({ id: s.id, name: s.name, type: s.type }))} />}
           </nav>
           <SearchBox />
           <span className="text-xs text-muted">
@@ -64,13 +81,5 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       </header>
       {children}
     </div>
-  );
-}
-
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link href={href} className="rounded-md px-2 py-1 hover:bg-white">
-      {children}
-    </Link>
   );
 }
