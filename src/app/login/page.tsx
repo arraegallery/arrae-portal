@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { adminEmails } from "@/lib/auth";
+import { teamRoleFor } from "@/lib/team";
 import { artistsForEmail } from "@/lib/artist-auth";
 import { supabaseConfigured, supabaseForRequest } from "@/lib/supabase/server";
 
@@ -16,7 +16,7 @@ async function sendLink(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   // Only admins and artists on file get a link. Everyone sees the same message, so the
   // form never reveals whose email is on file.
-  const known = adminEmails().includes(email) || (email.includes("@") && (await artistsForEmail(email)).length > 0);
+  const known = email.includes("@") && (!!(await teamRoleFor(email)) || (await artistsForEmail(email)).length > 0);
   if (!known) redirect("/login?error=sent");
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;

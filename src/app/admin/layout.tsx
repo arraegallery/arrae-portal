@@ -1,12 +1,13 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import { requireTeam } from "@/lib/team";
 import { getShows, getUnreadCount } from "@/lib/queries";
 import { ShowsMenu } from "@/components/ShowsMenu";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const email = await requireAdmin();
+  const { email, role } = await requireTeam();
+  const owner = role === "owner";
   const shows = await getShows();
   const unread = await getUnreadCount();
   return (
@@ -18,39 +19,44 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <img src="/arrae-logo.png" alt="ARRAE" width={858} height={310} className="h-6 w-auto" />
           </Link>
           <nav className="flex flex-wrap items-center gap-1 text-sm">
-            {shows
-              .filter((s) => s.type === "Volume")
-              .slice(-2)
-              .reverse()
-              .map((s) => (
-                <Link key={s.id} href={`/admin/review/${s.id}`} className="rounded-md px-2 py-1 hover:bg-white">
-                  {s.name}
-                </Link>
-              ))}
-            <Link href="/admin/sandbox" className="rounded-md px-2 py-1 hover:bg-white">
-              Sandbox
-            </Link>
-            <Link href="/admin/artists" className="rounded-md px-2 py-1 hover:bg-white">
-              Artists
-            </Link>
-            <Link href="/admin/waitlist" className="rounded-md px-2 py-1 hover:bg-white">
-              Waitlist
-            </Link>
-            <Link href="/admin/inbox" className="rounded-md px-2 py-1 hover:bg-white">
+            {owner &&
+              shows
+                .filter((s) => s.type === "Volume")
+                .slice(-2)
+                .reverse()
+                .map((s) => (
+                  <NavLink key={s.id} href={`/admin/review/${s.id}`}>
+                    {s.name}
+                  </NavLink>
+                ))}
+            {owner && <NavLink href="/admin/sandbox">Sandbox</NavLink>}
+            <NavLink href="/admin/artists">Artists</NavLink>
+            {owner && <NavLink href="/admin/waitlist">Waitlist</NavLink>}
+            <NavLink href="/admin/inbox">
               Inbox{unread > 0 && <span className="ml-1 rounded-full bg-ink px-1.5 py-0.5 text-[10px] text-white">{unread}</span>}
-            </Link>
-            <Link href="/admin/messages" className="rounded-md px-2 py-1 hover:bg-white">
-              Email artists
-            </Link>
-            <Link href="/admin/shows" className="rounded-md px-2 py-1 hover:bg-white">
-              Shows
-            </Link>
-<ShowsMenu shows={shows.map((s) => ({ id: s.id, name: s.name, type: s.type }))} />
+            </NavLink>
+            <NavLink href="/admin/logistics">Logistics</NavLink>
+            {owner && <NavLink href="/admin/messages">Email artists</NavLink>}
+            {owner && <NavLink href="/admin/shows">Shows</NavLink>}
+            {owner && <NavLink href="/admin/shopify">Shopify</NavLink>}
+            {owner && <NavLink href="/admin/team">Team</NavLink>}
+            {owner && <ShowsMenu shows={shows.map((s) => ({ id: s.id, name: s.name, type: s.type }))} />}
           </nav>
-          <span className="ml-auto text-xs text-muted">{email}</span>
+          <span className="ml-auto text-xs text-muted">
+            {email}
+            {!owner && " · team"}
+          </span>
         </div>
       </header>
       {children}
     </div>
+  );
+}
+
+function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link href={href} className="rounded-md px-2 py-1 hover:bg-white">
+      {children}
+    </Link>
   );
 }

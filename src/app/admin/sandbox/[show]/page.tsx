@@ -1,3 +1,4 @@
+import { requireOwner } from "@/lib/team";
 import { notFound } from "next/navigation";
 import { getSandbox, getShows } from "@/lib/queries";
 import { SandboxBoard } from "./SandboxBoard";
@@ -6,6 +7,7 @@ import { SandboxBoard } from "./SandboxBoard";
 export const maxDuration = 60;
 
 export default async function SandboxPage({ params }: { params: Promise<{ show: string }> }) {
+  await requireOwner();
   const { show } = await params;
   const started = Date.now();
   const [data, shows] = await Promise.all([getSandbox(show), getShows()]);

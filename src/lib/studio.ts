@@ -32,7 +32,7 @@ export async function getStudio(artistIds: string[]) {
     return status === "Submitted" ? "Received" : "Under review";
   };
   const thumbs = await signedImageUrls(images.map((i) => i.thumbPath ?? i.storagePath));
-  const imageByWork = new Map(images.map((img, i) => [img.workId, { id: img.id, thumb: thumbs[i], full: null, w: img.widthPx, h: img.heightPx }]));
+  const imageByWork = new Map(images.map((img, i) => [img.workId, { id: img.id, thumb: thumbs[i], full: null as string | null, w: img.widthPx, h: img.heightPx }]));
 
   return {
     shows: shows.map((x) => ({ id: x.id, name: x.name, type: x.type, open: x.openForSubmissions, description: x.description, deadline: x.applicationDeadline, opensOn: x.opensOn })),
@@ -60,6 +60,8 @@ export async function getStudio(artistIds: string[]) {
       unit: w.unit,
       sizeAsEntered: w.sizeAsEntered,
       sold: !!w.soldAt,
+      photosRequested: !!w.photosRequestedAt,
+      photosRequestNote: w.photosRequestNote,
       image: imageByWork.get(w.id) ?? null,
       shows: showWorks
         .filter((x) => x.workId === w.id)

@@ -3,13 +3,14 @@
 import { and, asc, eq, gt, inArray, isNull, lt, desc, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema as s } from "@/db";
-import { requireAdmin } from "@/lib/auth";
+import { requireOwner, requireTeam } from "@/lib/team";
 import { APPLICATION_STATUSES, WORK_STATUSES, type ApplicationStatus, type WorkStatus } from "@/lib/status";
 import { ensureApplication } from "@/lib/applications";
 import { notifyNewMessage } from "@/lib/notify";
 import { ARTIST_ONBOARDING, SHOW_ONBOARDING, readOnboarding } from "@/lib/onboarding";
 import { fetchStoreCollections, matchCollections } from "@/lib/shopify-bios";
 import { recordWorkChanges, TRACKED_FIELDS } from "@/lib/changes";
+import { attachPhotos, createPhotoSlots, listPhotos, makeMainPhoto, removePhoto, worksByIds, type UploadedPhoto } from "@/lib/photos";
 import { personalize, renderEmail, renderText, sendEmails, type EmailContent } from "@/lib/email";
 
 async function log(entry: { artistId?: string | null; workId?: string | null; showId?: string | null; kind: string; body: string; actor: string }) {
@@ -30,7 +31,7 @@ async function removeFromWaitlist(artistId: string) {
 }
 
 export async function setApplicationStatus(applicationId: string, status: ApplicationStatus) {
-  const actor = await requireAdmin();
+  const actor = await requireOwner();
   if (!APPLICATION_STATUSES.includes(status)) throw new Error("Unknown status");
   const [before] = await db.select({ status: s.applications.status }).from(s.applications).where(eq(s.applications.id, applicationId));
   if (before?.status === status) return;
@@ -47,7 +48,7 @@ export async function setApplicationStatus(applicationId: string, status: Applic
 }
 
 export async function setWorkStatus(showId: string, workId: string, status: WorkStatus) {
-  const actor = await requireAdmin();
+  const actor = await requireOwner();
   if (!WORK_STATUSES.includes(status)) throw new Error("Unknown status");
   const [before] = await db
     .select({ status: s.showWorks.status })
@@ -67,7 +68,7 @@ export async function setWorkStatus(showId: string, workId: string, status: Work
 
 /** A private curator note on an artist, or on one of their works when workId is given. */
 export async function addNote(artistId: string, body: string, showId?: string, workId?: string) {
-  const actor = await requireAdmin();
+  const actor = (await requireTeam()).email;
   const text = body.trim();
   if (!text) return;
   await log({ artistId, workId: workId ?? null, showId: showId ?? null, kind: "note", body: text.slice(0, 4000), actor });
@@ -75,7 +76,7 @@ export async function addNote(artistId: string, body: string, showId?: string, w
 }
 
 export async function moveOnWaitlist(artistId: string, direction: "up" | "down") {
-  await requireAdmin();
+  await requireOwner();
   const [me] = await db.select().from(s.waitlist).where(eq(s.waitlist.artistId, artistId));
   if (!me) return;
   const [other] =
@@ -92,14 +93,14 @@ export async function moveOnWaitlist(artistId: string, direction: "up" | "down")
 }
 
 export async function updateWaitlistEntry(artistId: string, fields: { note?: string; carryForward?: boolean }) {
-  const actor = await requireAdmin();
+  const actor = await requireOwner();
   await db.update(s.waitlist).set(fields).where(eq(s.waitlist.artistId, artistId));
   if (fields.note !== undefined) await log({ artistId, kind: "waitlist", body: `Waitlist note: ${fields.note}`, actor });
   revalidatePath("/admin/waitlist");
 }
 
 export async function removeFromWaitlistAction(artistId: string) {
-  const actor = await requireAdmin();
+  const actor = await requireOwner();
   await removeFromWaitlist(artistId);
   await log({ artistId, kind: "waitlist", body: "Removed from waitlist", actor });
   revalidatePath("/admin", "layout");
@@ -108,7 +109,7 @@ export async function removeFromWaitlistAction(artistId: string) {
 // ---- Sandbox: a private scratch space per show. Nothing here is a decision. ----
 
 export async function addToSandbox(showId: string, workId: string) {
-  await requireAdmin();
+  await requireOwner();
   const [last] = await db
     .select({ position: s.sandboxItems.position })
     .from(s.sandboxItems)
@@ -123,13 +124,13 @@ export async function addToSandbox(showId: string, workId: string) {
 }
 
 export async function removeFromSandbox(showId: string, workId: string) {
-  await requireAdmin();
+  await requireOwner();
   await db.delete(s.sandboxItems).where(and(eq(s.sandboxItems.showId, showId), eq(s.sandboxItems.workId, workId)));
   revalidatePath("/admin", "layout");
 }
 
 export async function reorderSandbox(showId: string, workIds: string[]) {
-  await requireAdmin();
+  await requireOwner();
   await db.transaction(async (tx) => {
     for (const [position, workId] of workIds.entries()) {
       await tx
@@ -141,7 +142,7 @@ export async function reorderSandbox(showId: string, workIds: string[]) {
 }
 
 export async function setSandboxNote(showId: string, workId: string, note: string) {
-  await requireAdmin();
+  await requireOwner();
   await db
     .update(s.sandboxItems)
     .set({ note: note.trim().slice(0, 2000) || null })
@@ -153,7 +154,7 @@ export async function setSandboxNote(showId: string, workId: string, note: strin
  * as Shortlist (private; artists see "Under review"). Works already decided keep their decision.
  */
 export async function promoteFromSandbox(showId: string, workIds: string[]) {
-  const actor = await requireAdmin();
+  const actor = await requireOwner();
   if (!workIds.length) return;
   const existing = await db
     .select({ workId: s.showWorks.workId, status: s.showWorks.status })
@@ -176,7 +177,7 @@ export async function promoteFromSandbox(showId: string, workIds: string[]) {
 }
 
 export async function createShow(name: string, type: "Volume" | "Takeover" | "ARRAE Finds") {
-  const actor = await requireAdmin();
+  const actor = await requireOwner();
   const clean = name.trim().slice(0, 200);
   if (!clean) throw new Error("Give the show a name");
   if (!["Volume", "Takeover", "ARRAE Finds"].includes(type)) throw new Error("Unknown show type");
@@ -193,7 +194,7 @@ export async function createShow(name: string, type: "Volume" | "Takeover" | "AR
 
 /** Move works (and optionally the artist's application) from one show to another. Decisions travel with them. */
 export async function moveWorksToShow(fromShowId: string, toShowId: string, workIds: string[], applicationId?: string) {
-  const actor = await requireAdmin();
+  const actor = await requireOwner();
   if (fromShowId === toShowId || !workIds.length) return;
   const [target] = await db.select({ id: s.shows.id, name: s.shows.name }).from(s.shows).where(eq(s.shows.id, toShowId));
   if (!target) throw new Error("Unknown show");
@@ -216,7 +217,7 @@ export async function moveWorksToShow(fromShowId: string, toShowId: string, work
 
 /** Take works out of a show entirely (the works themselves are kept). */
 export async function removeWorksFromShow(showId: string, workIds: string[]) {
-  const actor = await requireAdmin();
+  const actor = await requireOwner();
   if (!workIds.length) return;
   const works = await db.select({ id: s.works.id, artistId: s.works.artistId, title: s.works.title }).from(s.works).where(inArray(s.works.id, workIds));
   await db.delete(s.showWorks).where(and(eq(s.showWorks.showId, showId), inArray(s.showWorks.workId, workIds)));
@@ -230,7 +231,7 @@ export async function removeWorksFromShow(showId: string, workIds: string[]) {
  * either an existing one or a new artist record. Returns the artist id.
  */
 export async function reassignWorks(workIds: string[], to: { artistId: string } | { name: string; email: string }) {
-  const actor = await requireAdmin();
+  const actor = await requireOwner();
   if (!workIds.length) throw new Error("Pick at least one work");
   let artistId: string;
   if ("artistId" in to) {
@@ -271,7 +272,7 @@ export async function updateArtist(
     onboarding?: Record<string, unknown>;
   },
 ) {
-  const actor = await requireAdmin();
+  const actor = (await requireTeam()).email;
   const set: Partial<typeof s.artists.$inferInsert> = {};
   if (fields.name !== undefined) {
     const n = clean(fields.name, 200);
@@ -290,7 +291,7 @@ export async function updateArtist(
 
 /** Tick or untick one onboarding step, for the artist overall (showId null) or for one show. */
 export async function setOnboardingStep(artistId: string, key: string, showId: string | null, done: boolean) {
-  const actor = await requireAdmin();
+  const actor = (await requireTeam()).email;
   const allowed = showId ? SHOW_ONBOARDING.map(([k]) => k as string) : ARTIST_ONBOARDING.map(([k]) => k as string);
   if (!allowed.includes(key)) throw new Error("Unknown onboarding step");
   const [a] = await db.select({ onboarding: s.artists.onboarding }).from(s.artists).where(eq(s.artists.id, artistId));
@@ -307,7 +308,7 @@ export async function setOnboardingStep(artistId: string, key: string, showId: s
 
 /** Put existing works (say, shown before and still available) forward for another show. */
 export async function addWorksToShow(workIds: string[], showId: string) {
-  const actor = await requireAdmin();
+  const actor = await requireOwner();
   if (!workIds.length) return;
   const [show] = await db.select({ id: s.shows.id, name: s.shows.name }).from(s.shows).where(eq(s.shows.id, showId));
   if (!show) throw new Error("Unknown show");
@@ -322,7 +323,7 @@ export async function updateWork(
   workId: string,
   fields: { title?: string; year?: string; medium?: string; category?: string; description?: string; price?: string; width?: string; height?: string; depth?: string; unit?: string },
 ) {
-  const actor = await requireAdmin();
+  const actor = (await requireTeam()).email;
   const num = (v?: string) => {
     if (v === undefined) return undefined;
     const t = v.trim();
@@ -371,7 +372,7 @@ function compose(m: EmailContent, name: string) {
 
 /** Send the message to the signed-in admin only, addressed as the first chosen artist. */
 export async function sendTestMessage(message: EmailContent, sampleArtistId?: string) {
-  const actor = await requireAdmin();
+  const actor = await requireOwner();
   const m = cleanMessage(message);
   const [sample] = sampleArtistId ? await db.select({ name: s.artists.name }).from(s.artists).where(eq(s.artists.id, sampleArtistId)) : [];
   const out = compose(m, sample?.name ?? "Artist");
@@ -382,7 +383,7 @@ export async function sendTestMessage(message: EmailContent, sampleArtistId?: st
 
 /** Send one separate email to each chosen artist, so nobody sees anyone else's address. */
 export async function sendMessageToArtists(artistIds: string[], message: EmailContent) {
-  const actor = await requireAdmin();
+  const actor = await requireOwner();
   const m = cleanMessage(message);
   const ids = [...new Set(artistIds)];
   if (!ids.length) throw new Error("Choose at least one artist");
@@ -410,7 +411,7 @@ export async function sendMessageToArtists(artistIds: string[], message: EmailCo
 
 /** Copies each artist collection's description into ARRAE bios that are still empty. Never overwrites. */
 export async function fillBiosFromShopify() {
-  const actor = await requireAdmin();
+  const actor = await requireOwner();
   const collections = await fetchStoreCollections();
   const artists = await db.select({ id: s.artists.id, name: s.artists.name, arraeBio: s.artists.arraeBio, handle: s.artists.shopifyCollectionHandle }).from(s.artists);
   const { matches, unmatched } = matchCollections(artists, collections);
@@ -437,7 +438,7 @@ export async function fillBiosFromShopify() {
 // ---- Conversations with artists ----
 
 export async function sendMessageToArtist(artistId: string, body: string) {
-  const actor = await requireAdmin();
+  const actor = (await requireTeam()).email;
   const text = body.trim().slice(0, 5000);
   if (!text) throw new Error("Write a message first");
   const [artist] = await db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email }).from(s.artists).where(eq(s.artists.id, artistId));
@@ -450,7 +451,7 @@ export async function sendMessageToArtist(artistId: string, body: string) {
 }
 
 export async function markArtistMessagesRead(artistId: string) {
-  await requireAdmin();
+  await requireTeam();
   await db
     .update(s.artistMessages)
     .set({ readByArraeAt: new Date() })
@@ -472,7 +473,7 @@ type ShowFields = {
 };
 
 export async function updateShow(showId: string, fields: ShowFields) {
-  const actor = await requireAdmin();
+  const actor = await requireOwner();
   const date = (v?: string) => (v === undefined ? undefined : /^\d{4}-\d{2}-\d{2}$/.test(v.trim()) ? v.trim() : null);
   const set: Partial<typeof s.shows.$inferInsert> = {};
   if (fields.name !== undefined) {
@@ -500,4 +501,78 @@ export async function updateShow(showId: string, fields: ShowFields) {
   await log({ showId, kind: "show", body: `Show ${notes.length ? notes.join(", ") : `details edited: ${Object.keys(set).join(", ")}`}`, actor });
   revalidatePath("/admin", "layout");
   revalidatePath("/studio", "layout");
+}
+
+/* Photos: anyone on the team can fix a work's photos or ask the artist for better ones. */
+
+async function teamWork(workId: string) {
+  const actor = (await requireTeam()).email;
+  const [work] = await db.select().from(s.works).where(eq(s.works.id, workId));
+  if (!work) throw new Error("That work no longer exists");
+  return { actor, work };
+}
+
+export async function getWorkPhotos(workId: string) {
+  await teamWork(workId);
+  return listPhotos(workId);
+}
+
+export async function prepareWorkPhotoUploads(workId: string, count: number) {
+  await teamWork(workId);
+  return createPhotoSlots(workId, count);
+}
+
+export async function addWorkPhotos(workId: string, images: UploadedPhoto[], asMain: boolean) {
+  const { actor, work } = await teamWork(workId);
+  await attachPhotos(workId, images, asMain);
+  await db.insert(s.activity).values({ artistId: work.artistId, workId, kind: "edit", body: `Added ${images.length} photo${images.length === 1 ? "" : "s"} to "${work.title}"`, actor });
+  revalidateWorkPages(work.artistId);
+  return listPhotos(workId);
+}
+
+export async function makeWorkMainPhoto(workId: string, imageId: string) {
+  const { work } = await teamWork(workId);
+  await makeMainPhoto(workId, imageId);
+  revalidateWorkPages(work.artistId);
+  return listPhotos(workId);
+}
+
+export async function removeWorkPhoto(workId: string, imageId: string) {
+  const { actor, work } = await teamWork(workId);
+  await removePhoto(workId, imageId, false);
+  await db.insert(s.activity).values({ artistId: work.artistId, workId, kind: "edit", body: `Removed a photo from "${work.title}"`, actor });
+  revalidateWorkPages(work.artistId);
+  return listPhotos(workId);
+}
+
+function revalidateWorkPages(artistId: string | null) {
+  if (artistId) revalidatePath(`/admin/artists/${artistId}`);
+  revalidatePath("/admin/review/[show]", "page");
+  revalidatePath("/admin/sandbox/[show]", "page");
+}
+
+/** Asks the artist, in their message thread (and by email), for better photos of these works. */
+export async function requestBetterPhotos(workIds: string[], note: string) {
+  const actor = (await requireTeam()).email;
+  const works = await worksByIds(workIds);
+  if (!works.length) throw new Error("Choose at least one work");
+  const artistIds = [...new Set(works.map((w) => w.artistId))];
+  if (artistIds.length !== 1 || !artistIds[0]) throw new Error("Ask one artist at a time");
+  const [artist] = await db.select().from(s.artists).where(eq(s.artists.id, artistIds[0]));
+  const text = note.trim().slice(0, 2000);
+  await db.update(s.works).set({ photosRequestedAt: new Date(), photosRequestNote: text || null }).where(inArray(s.works.id, works.map((w) => w.id)));
+  const list = works.map((w) => `• ${w.title}`).join("\n");
+  const body = `${text || "Could you send us better photos of these works?"}\n\n${list}\n\nYou can upload new photos from your studio: open the work and choose "Photos".`;
+  const [row] = await db.insert(s.artistMessages).values({ artistId: artist.id, sender: "arrae", body, actor, readByArraeAt: new Date() }).returning();
+  for (const w of works) await db.insert(s.activity).values({ artistId: artist.id, workId: w.id, kind: "note", body: `Asked for better photos of "${w.title}"`, actor });
+  if (artist.email) await notifyNewMessage({ to: artist.email, artistName: artist.name, preview: body });
+  revalidateWorkPages(artist.id);
+  revalidatePath("/studio");
+  return { id: row.id, sender: "arrae" as const, body: row.body, at: row.createdAt.toISOString(), read: true };
+}
+
+export async function clearPhotoRequest(workId: string) {
+  const { work } = await teamWork(workId);
+  await db.update(s.works).set({ photosRequestedAt: null, photosRequestNote: null }).where(eq(s.works.id, workId));
+  revalidateWorkPages(work.artistId);
 }

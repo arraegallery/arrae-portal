@@ -7,7 +7,7 @@ import { fillBiosFromShopify } from "../actions";
 
 type Row = { id: string; name: string; email: string; works: number; everSelected: boolean; hasArraeBio: boolean };
 
-export function ArtistDirectory({ artists }: { artists: Row[] }) {
+export function ArtistDirectory({ artists, owner }: { artists: Row[]; owner: boolean }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"all" | "roster" | "needs-bio">("all");
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
@@ -54,9 +54,11 @@ export function ArtistDirectory({ artists }: { artists: Row[] }) {
               {label}
             </button>
           ))}
-          <button onClick={fill} disabled={pending} className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line disabled:opacity-50" title="Copies each artist collection's description from arraegallery.com into ARRAE bios that are still empty">
-            {pending ? "Filling…" : "Fill bios from Shopify"}
-          </button>
+          {owner && (
+            <button onClick={fill} disabled={pending} className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line disabled:opacity-50" title="Copies each artist collection's description from arraegallery.com into ARRAE bios that are still empty">
+              {pending ? "Filling…" : "Fill bios from Shopify"}
+            </button>
+          )}
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or email" className="w-60 rounded-md bg-white px-3 py-1.5 ring-1 ring-line" />
         </div>
       </section>
