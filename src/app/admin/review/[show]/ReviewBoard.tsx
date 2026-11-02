@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { addNote, setApplicationStatus, setWorkStatus } from "../../actions";
+import Link from "next/link";
+import { addNote, addToSandbox, removeFromSandbox, setApplicationStatus, setWorkStatus } from "../../actions";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { BoardEntry, BoardWork } from "@/lib/queries";
 import {
@@ -26,9 +27,29 @@ function Chip({ status }: { status: string }) {
   );
 }
 
-export function ReviewBoard({ show, entries: initial }: { show: { id: string; name: string; type: string }; entries: BoardEntry[] }) {
+export function ReviewBoard({
+  show,
+  entries: initial,
+  sandboxIds,
+}: {
+  show: { id: string; name: string; type: string };
+  entries: BoardEntry[];
+  sandboxIds: string[];
+}) {
   const [entries, setEntries] = useState(initial);
   useEffect(() => setEntries(initial), [initial]);
+  const [sandbox, setSandbox] = useState(() => new Set(sandboxIds));
+  useEffect(() => setSandbox(new Set(sandboxIds)), [sandboxIds]);
+  function toggleSandbox(workId: string) {
+    const has = sandbox.has(workId);
+    setSandbox((s) => {
+      const n = new Set(s);
+      if (has) n.delete(workId);
+      else n.add(workId);
+      return n;
+    });
+    startTransition(() => (has ? removeFromSandbox(show.id, workId) : addToSandbox(show.id, workId)));
+  }
   const [view, setView] = useState<View>("artists");
   const [group, setGroup] = useState<Group>("all");
   const [status, setStatus] = useState<string>("all");
@@ -105,6 +126,9 @@ export function ReviewBoard({ show, entries: initial }: { show: { id: string; na
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted">{show.type} review</p>
           <h1 className="font-display text-4xl">{show.name}</h1>
+          <Link href={`/admin/sandbox/${show.id}`} className="text-sm text-muted underline">
+            Open the {show.name} sandbox ({sandbox.size})
+          </Link>
         </div>
         <dl className="flex gap-6 text-sm">
           <div>
@@ -200,7 +224,7 @@ export function ReviewBoard({ show, entries: initial }: { show: { id: string; na
               </header>
               <div className="flex gap-4 overflow-x-auto pb-2">
                 {e.shown.map((w) => (
-                  <WorkCard key={w.id} work={w} onOpen={() => setOpenWork({ artistId: e.artist.id, workId: w.id })} onDecide={(s) => updateWork(e.artist.id, w.id, s)} tall />
+                  <WorkCard key={w.id} work={w} onOpen={() => setOpenWork({ artistId: e.artist.id, workId: w.id })} onDecide={(s) => updateWork(e.artist.id, w.id, s)} inSandbox={sandbox.has(w.id)} onSandbox={() => toggleSandbox(w.id)} tall />
                 ))}
               </div>
             </article>
@@ -211,7 +235,7 @@ export function ReviewBoard({ show, entries: initial }: { show: { id: string; na
           {visible.flatMap((e) =>
             e.shown.map((w) => (
               <div key={w.id} className="mb-4 break-inside-avoid">
-                <WorkCard work={w} artistName={e.artist.name} onOpen={() => setOpenWork({ artistId: e.artist.id, workId: w.id })} onDecide={(s) => updateWork(e.artist.id, w.id, s)} />
+                <WorkCard work={w} artistName={e.artist.name} onOpen={() => setOpenWork({ artistId: e.artist.id, workId: w.id })} onDecide={(s) => updateWork(e.artist.id, w.id, s)} inSandbox={sandbox.has(w.id)} onSandbox={() => toggleSandbox(w.id)} />
               </div>
             )),
           )}
@@ -297,17 +321,30 @@ function WorkCard({
   artistName,
   onOpen,
   onDecide,
+  inSandbox,
+  onSandbox,
   tall,
 }: {
   work: BoardWork;
   artistName?: string;
   onOpen: () => void;
   onDecide: (s: WorkStatus) => void;
+  inSandbox: boolean;
+  onSandbox: () => void;
   tall?: boolean;
 }) {
   const ratio = work.width && work.height ? work.width / work.height : null;
   return (
-    <figure className={`group overflow-hidden rounded-lg bg-white ring-1 ring-line ${tall ? "w-80 shrink-0" : ""}`}>
+    <figure className={`group relative overflow-hidden rounded-lg bg-white ring-1 ring-line ${tall ? "w-80 shrink-0" : ""}`}>
+      <button
+        onClick={onSandbox}
+        title={inSandbox ? "In your sandbox (click to take out)" : "Add to sandbox"}
+        className={`absolute right-2 top-2 z-10 rounded-full px-2 py-0.5 text-xs ring-1 transition ${
+          inSandbox ? "bg-ink text-white ring-ink" : "bg-white/90 ring-line opacity-0 group-hover:opacity-100"
+        }`}
+      >
+        {inSandbox ? "✓ Sandbox" : "+ Sandbox"}
+      </button>
       <button onClick={onOpen} className="block w-full">
         <div className={tall ? "flex h-80 items-center justify-center bg-[#f3f0ea]" : ""}>
           <ArtworkImage image={work.images[0]} title={work.title} fallbackRatio={ratio} className={tall ? "max-h-80 w-auto object-contain" : ""} />

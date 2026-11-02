@@ -24,7 +24,10 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
   const { error } = await searchParams;
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
-      <h1 className="font-display text-3xl">ARRAE</h1>
+      <h1>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/arrae-logo.png" alt="ARRAE" width={858} height={310} className="h-12 w-auto" />
+      </h1>
       <p className="mt-1 text-sm text-muted">Sign in with your gallery email. We'll send you a link.</p>
       {error && MESSAGES[error] && <p className="mt-4 rounded-md bg-white p-3 text-sm ring-1 ring-line">{MESSAGES[error]}</p>}
       <form action={sendLink} className="mt-6 flex flex-col gap-3">
