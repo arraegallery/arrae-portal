@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, ne } from "drizzle-orm";
 import { db, schema as s } from "@/db";
 import { requireTeam } from "@/lib/team";
 import { portalUrl } from "@/lib/notify";
@@ -20,6 +20,8 @@ export default async function CalendarPage() {
       decisionsDueOn: s.shows.decisionsDueOn,
     })
     .from(s.shows)
+    // ARRAE Finds is a collection, not a show with dates.
+    .where(ne(s.shows.type, "ARRAE Finds"))
     .orderBy(asc(s.shows.name));
   const windows = await db
     .select({ id: s.bookingWindows.id, kind: s.bookingWindows.kind, startsOn: s.bookingWindows.startsOn, endsOn: s.bookingWindows.endsOn, show: s.shows.name })

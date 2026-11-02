@@ -21,13 +21,17 @@ type Event = {
   notes: string | null;
   showId: string | null;
 };
-type Item = { key: string; label: string; start: string; end: string; chip: string; dot: string; detail?: string; open: () => void };
+type Item = { key: string; label: string; start: string; end: string; chip: string; dot: string; detail?: string; startTime?: string | null; endTime?: string | null; open: () => void };
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const toDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const addDays = (d: string, n: number) => iso(new Date(toDate(d).getTime() + n * 86400000));
 const monthLabel = (m: string) => toDate(`${m}-01`).toLocaleDateString("en-US", { timeZone: "UTC", month: "long", year: "numeric" });
+const longDay = (d: string) => toDate(d).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric", year: "numeric" });
+const mins = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const HOUR_PX = 48;
 const shortDay = (d: string) => toDate(d).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" });
 const shiftMonth = (m: string, n: number) => {
   const d = toDate(`${m}-01`);
@@ -43,11 +47,24 @@ const timeRange = (e: Event) => (e.startTime ? `${clock(e.startTime)}${e.endTime
 const dayRange = (start: string, end: string) => (start === end ? shortDay(start) : `${shortDay(start)} – ${shortDay(end)}`);
 
 const input = "mt-0.5 w-full rounded-md bg-white px-2 py-1.5 text-sm text-ink ring-1 ring-line";
-const blank = (day: string): EventInput => ({ title: "", kind: "event", startsOn: day, endsOn: "", startTime: "", endTime: "", location: "", notes: "", showId: "" });
+const blank = (day: string, startTime = "", endTime = ""): EventInput => ({ title: "", kind: "event", startsOn: day, endsOn: "", startTime, endTime, location: "", notes: "", showId: "" });
 
 export function GalleryCalendar({ today, owner, feedUrl, shows, windows, events }: { today: string; owner: boolean; feedUrl: string | null; shows: Show[]; windows: Window[]; events: Event[] }) {
   const router = useRouter();
   const [month, setMonth] = useState(today.slice(0, 7));
+  const [view, setView] = useState<"month" | "day">("month");
+  const [day, setDay] = useState(today);
+  const openDay = (d: string) => {
+    setDay(d);
+    setMonth(d.slice(0, 7));
+    setView("day");
+  };
+  const step = (n: number) => {
+    if (view === "month") return setMonth(shiftMonth(month, n));
+    const d = addDays(day, n);
+    setDay(d);
+    setMonth(d.slice(0, 7));
+  };
   const [editing, setEditing] = useState<EventInput | null>(null);
   const [dating, setDating] = useState<Show | null>(null);
 
@@ -87,6 +104,8 @@ export function GalleryCalendar({ today, owner, feedUrl, shows, windows, events 
         chip: k.chip,
         dot: k.dot,
         detail: [k.label, timeRange(e), e.location].filter(Boolean).join(" · "),
+        startTime: e.startTime,
+        endTime: e.endTime,
         open: () =>
           setEditing({
             id: e.id,
@@ -103,7 +122,7 @@ export function GalleryCalendar({ today, owner, feedUrl, shows, windows, events 
       });
     }
     // Shows first (they're long), then by start date.
-    return out.sort((a, b) => a.start.localeCompare(b.start) || (b.end > a.end ? 1 : -1));
+    return out.sort((a, b) => a.start.localeCompare(b.start) || b.end.localeCompare(a.end) || (a.startTime ?? "").localeCompare(b.startTime ?? ""));
   }, [shows, windows, events, router, owner]);
 
   const first = `${month}-01`;
@@ -122,24 +141,37 @@ export function GalleryCalendar({ today, owner, feedUrl, shows, windows, events 
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted">Private to ARRAE</p>
           <h1 className="font-display text-4xl">Gallery calendar</h1>
-          <p className="mt-1 text-sm text-muted">Shows, deadlines, drop-off and pick-up windows, and your own events. Click a day to add an event.</p>
+          <p className="mt-1 text-sm text-muted">Shows, deadlines, drop-off and pick-up windows, and your own events. Click a day to see it hour by hour.</p>
         </div>
-        <button onClick={() => setEditing(blank(today))} className="rounded-md bg-ink px-4 py-2 text-sm text-white">
+        <button onClick={() => setEditing(blank(view === "day" ? day : today))} className="rounded-md bg-ink px-4 py-2 text-sm text-white">
           Add event
         </button>
       </section>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <button onClick={() => setMonth(shiftMonth(month, -1))} className="rounded-md bg-white px-3 py-1.5 text-sm ring-1 ring-line" aria-label="Previous month">
+        <div className="flex overflow-hidden rounded-md ring-1 ring-line">
+          {(["month", "day"] as const).map((v) => (
+            <button key={v} onClick={() => setView(v)} className={`px-3 py-1.5 text-sm ${view === v ? "bg-ink text-white" : "bg-white"}`}>
+              {v === "month" ? "Month" : "Day"}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => step(-1)} className="rounded-md bg-white px-3 py-1.5 text-sm ring-1 ring-line" aria-label={view === "month" ? "Previous month" : "Previous day"}>
           ←
         </button>
-        <button onClick={() => setMonth(today.slice(0, 7))} className="rounded-md bg-white px-3 py-1.5 text-sm ring-1 ring-line">
+        <button
+          onClick={() => {
+            setMonth(today.slice(0, 7));
+            setDay(today);
+          }}
+          className="rounded-md bg-white px-3 py-1.5 text-sm ring-1 ring-line"
+        >
           Today
         </button>
-        <button onClick={() => setMonth(shiftMonth(month, 1))} className="rounded-md bg-white px-3 py-1.5 text-sm ring-1 ring-line" aria-label="Next month">
+        <button onClick={() => step(1)} className="rounded-md bg-white px-3 py-1.5 text-sm ring-1 ring-line" aria-label={view === "month" ? "Next month" : "Next day"}>
           →
         </button>
-        <h2 className="ml-2 font-display text-2xl">{monthLabel(month)}</h2>
+        <h2 className="ml-2 font-display text-2xl">{view === "month" ? monthLabel(month) : longDay(day)}</h2>
         <div className="ml-auto flex flex-wrap gap-3 text-xs text-muted">
           <Legend dot={SHOW_DOT} label="Show on view" />
           <Legend dot={DEADLINE_DOT} label="Deadline" />
@@ -150,6 +182,9 @@ export function GalleryCalendar({ today, owner, feedUrl, shows, windows, events 
         </div>
       </div>
 
+      {view === "day" ? (
+        <DayView day={day} items={on(day)} onAdd={(start, end) => setEditing(blank(day, start, end))} />
+      ) : (
       <div className="overflow-hidden rounded-lg bg-white ring-1 ring-line">
         <div className="grid grid-cols-7 border-b border-line bg-paper text-center text-xs uppercase tracking-wider text-muted">
           {WEEKDAYS.map((w) => (
@@ -165,7 +200,7 @@ export function GalleryCalendar({ today, owner, feedUrl, shows, windows, events 
             return (
               <div
                 key={d}
-                onClick={() => setEditing(blank(d))}
+                onClick={() => openDay(d)}
                 className={`min-h-16 cursor-pointer border-b border-r border-line p-1 hover:bg-paper sm:min-h-28 ${inMonth ? "" : "bg-paper/60 text-muted"}`}
               >
                 <div className={`mb-1 text-xs ${d === today ? "inline-flex h-5 w-5 items-center justify-center rounded-full bg-ink text-white" : ""}`}>{Number(d.slice(8))}</div>
@@ -194,6 +229,7 @@ export function GalleryCalendar({ today, owner, feedUrl, shows, windows, events 
           })}
         </div>
       </div>
+      )}
 
       <section className="mt-8 grid gap-8 md:grid-cols-[2fr_1fr]">
         <div className="min-w-0">
@@ -255,6 +291,81 @@ export function GalleryCalendar({ today, owner, feedUrl, shows, windows, events 
       {editing && <EventForm value={editing} shows={shows} onClose={() => setEditing(null)} onSaved={() => (setEditing(null), router.refresh())} />}
       {dating && <ShowDates show={dating} onClose={() => setDating(null)} onSaved={() => (setDating(null), router.refresh())} />}
     </main>
+  );
+}
+
+/** One day, hour by hour: all-day items on top, timed events placed on the hour grid. */
+function DayView({ day, items, onAdd }: { day: string; items: Item[]; onAdd: (start: string, end: string) => void }) {
+  const allDay = items.filter((i) => !i.startTime || i.start !== i.end);
+  const timed = items
+    .filter((i) => i.startTime && i.start === i.end)
+    .map((i) => {
+      const s = mins(i.startTime!);
+      const e = i.endTime && mins(i.endTime) > s ? mins(i.endTime) : s + 60;
+      return { i, s, e, lane: 0, lanes: 1 };
+    })
+    .sort((a, b) => a.s - b.s || b.e - a.e);
+  // Side by side when events overlap: give each a lane within its cluster.
+  let cluster: typeof timed = [];
+  const close = () => cluster.forEach((x) => (x.lanes = Math.max(...cluster.map((y) => y.lane)) + 1));
+  for (const x of timed) {
+    if (cluster.length && x.s >= Math.max(...cluster.map((y) => y.e))) {
+      close();
+      cluster = [];
+    }
+    const used = new Set(cluster.filter((y) => y.e > x.s).map((y) => y.lane));
+    while (used.has(x.lane)) x.lane++;
+    cluster.push(x);
+  }
+  close();
+  const startHour = Math.min(7, ...timed.map((x) => Math.floor(x.s / 60)));
+  const endHour = Math.max(23, ...timed.map((x) => Math.ceil(x.e / 60)));
+  const hours = Array.from({ length: endHour - startHour }, (_, n) => startHour + n);
+  return (
+    <div className="overflow-hidden rounded-lg bg-white ring-1 ring-line">
+      <div className="border-b border-line bg-paper p-2">
+        <p className="mb-1 text-xs uppercase tracking-wider text-muted">All day</p>
+        {allDay.length ? (
+          <div className="space-y-1">
+            {allDay.map((i) => (
+              <button key={i.key} onClick={i.open} className={`block w-full truncate rounded px-2 py-1 text-left text-sm ring-1 ${i.chip}`}>
+                {i.label}
+                {i.start !== i.end && <span className="ml-2 text-xs opacity-70">{dayRange(i.start, i.end)}</span>}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted">Nothing all day.</p>
+        )}
+      </div>
+      <div className="relative" style={{ height: hours.length * HOUR_PX }}>
+        {hours.map((h, n) => (
+          <button
+            key={h}
+            onClick={() => onAdd(hhmm(h * 60), hhmm(h * 60 + 60))}
+            className="absolute left-0 right-0 flex border-t border-line text-left hover:bg-paper"
+            style={{ top: n * HOUR_PX, height: HOUR_PX }}
+            title={`Add an event at ${clock(hhmm(h * 60))}`}
+          >
+            <span className="w-16 shrink-0 px-2 pt-1 text-right text-xs text-muted">{clock(hhmm(h * 60))}</span>
+          </button>
+        ))}
+        <div className="pointer-events-none absolute bottom-0 left-16 right-2 top-0">
+          {timed.map(({ i, s, e, lane, lanes }) => (
+            <button
+              key={i.key}
+              onClick={i.open}
+              className={`pointer-events-auto absolute flex flex-col justify-start overflow-hidden rounded px-2 py-1 text-left text-xs ring-1 ${i.chip}`}
+              style={{ top: ((s - startHour * 60) / 60) * HOUR_PX + 1, height: Math.max(((e - s) / 60) * HOUR_PX - 2, 22), left: `${(lane / lanes) * 100}%`, width: `calc(${100 / lanes}% - 4px)` }}
+            >
+              <span className="block truncate font-medium">{i.label}</span>
+              <span className="block truncate opacity-80">{i.detail}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="border-t border-line px-3 py-2 text-xs text-muted">Click an hour to add an event at that time.</p>
+    </div>
   );
 }
 
