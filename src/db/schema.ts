@@ -44,6 +44,9 @@ export const shows = pgTable("shows", {
   closesOn: date("closes_on"),
   applicationDeadline: date("application_deadline"),
   decisionsDueOn: date("decisions_due_on"),
+  /** Shown to artists in their portal, where they can submit or put works forward. */
+  openForSubmissions: boolean("open_for_submissions").default(false).notNull(),
+  description: text("description"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -62,7 +65,7 @@ export const artists = pgTable("artists", {
   photoPath: text("photo_path"),
   cvAttachmentId: text("cv_attachment_id"),
   cvPath: text("cv_path"),
-  onboarding: jsonb("onboarding").$type<Record<string, boolean | string>>().default({}).notNull(),
+  onboarding: jsonb("onboarding").$type<Record<string, unknown>>().default({}).notNull(),
   shopifyCollectionHandle: text("shopify_collection_handle"),
   airtableRecordIds: text("airtable_record_ids").array().default([]).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -184,6 +187,35 @@ export const activity = pgTable("activity", {
   kind: text("kind").notNull(), // note | status | waitlist
   body: text("body").notNull(),
   actor: text("actor"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Every change to a work's details, old and new value, by ARRAE or the artist. */
+export const workChanges = pgTable("work_changes", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  workId: text("work_id")
+    .notNull()
+    .references(() => works.id, { onDelete: "cascade" }),
+  artistId: text("artist_id").references(() => artists.id, { onDelete: "set null" }),
+  field: text("field").notNull(),
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
+  actor: text("actor"),
+  actorRole: text("actor_role").notNull().default("arrae"), // arrae | artist
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** The conversation between ARRAE and one artist, visible to both. */
+export const artistMessages = pgTable("artist_messages", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  artistId: text("artist_id")
+    .notNull()
+    .references(() => artists.id, { onDelete: "cascade" }),
+  sender: text("sender").notNull(), // arrae | artist
+  body: text("body").notNull(),
+  actor: text("actor"),
+  readByArraeAt: timestamp("read_by_arrae_at", { withTimezone: true }),
+  readByArtistAt: timestamp("read_by_artist_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

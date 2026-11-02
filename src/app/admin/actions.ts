@@ -5,6 +5,9 @@ import { revalidatePath } from "next/cache";
 import { db, schema as s } from "@/db";
 import { requireAdmin } from "@/lib/auth";
 import { APPLICATION_STATUSES, WORK_STATUSES, type ApplicationStatus, type WorkStatus } from "@/lib/status";
+import { ARTIST_ONBOARDING, SHOW_ONBOARDING, readOnboarding } from "@/lib/onboarding";
+import { fetchStoreCollections, matchCollections } from "@/lib/shopify-bios";
+import { recordWorkChanges, TRACKED_FIELDS } from "@/lib/changes";
 import { personalize, renderEmail, renderText, sendEmails, type EmailContent } from "@/lib/email";
 
 async function log(entry: { artistId?: string | null; workId?: string | null; showId?: string | null; kind: string; body: string; actor: string }) {
@@ -263,7 +266,7 @@ const clean = (v: unknown, max = 4000) => {
 export async function updateArtist(
   artistId: string,
   fields: Partial<Record<"name" | "email" | "phone" | "website" | "social" | "education" | "bio" | "arraeBio" | "internalNotes" | "shopifyCollectionHandle", string>> & {
-    onboarding?: Record<string, boolean | string>;
+    onboarding?: Record<string, unknown>;
   },
 ) {
   const actor = await requireAdmin();
@@ -281,6 +284,51 @@ export async function updateArtist(
   await db.update(s.artists).set(set).where(eq(s.artists.id, artistId));
   await log({ artistId, kind: "edit", body: `Profile edited: ${Object.keys(set).join(", ")}`, actor });
   revalidatePath("/admin", "layout");
+}
+
+/** Tick or untick one onboarding step, for the artist overall (showId null) or for one show. */
+export async function setOnboardingStep(artistId: string, key: string, showId: string | null, done: boolean) {
+  const actor = await requireAdmin();
+  const allowed = showId ? SHOW_ONBOARDING.map(([k]) => k as string) : ARTIST_ONBOARDING.map(([k]) => k as string);
+  if (!allowed.includes(key)) throw new Error("Unknown onboarding step");
+  const [a] = await db.select({ onboarding: s.artists.onboarding }).from(s.artists).where(eq(s.artists.id, artistId));
+  if (!a) throw new Error("Unknown artist");
+  const ob = { ...readOnboarding(a.onboarding) };
+  if (showId) ob.shows = { ...(ob.shows ?? {}), [showId]: { ...(ob.shows?.[showId] ?? {}), [key]: done } };
+  else ob[key] = done;
+  await db.update(s.artists).set({ onboarding: ob }).where(eq(s.artists.id, artistId));
+  const label = [...ARTIST_ONBOARDING, ...SHOW_ONBOARDING].find(([k]) => k === key)?.[1] ?? key;
+  await log({ artistId, showId, kind: "onboarding", body: `${label}: ${done ? "done" : "not done"}`, actor });
+  revalidatePath(`/admin/artists/${artistId}`);
+  return ob;
+}
+
+/** Put existing works (say, shown before and still available) forward for another show. */
+export async function addWorksToShow(workIds: string[], showId: string) {
+  const actor = await requireAdmin();
+  if (!workIds.length) return;
+  const [show] = await db.select({ id: s.shows.id, name: s.shows.name }).from(s.shows).where(eq(s.shows.id, showId));
+  if (!show) throw new Error("Unknown show");
+  const works = await db.select({ id: s.works.id, title: s.works.title, artistId: s.works.artistId }).from(s.works).where(inArray(s.works.id, workIds));
+  await db.insert(s.showWorks).values(works.map((w) => ({ showId, workId: w.id, status: "Submitted" as const }))).onConflictDoNothing();
+  for (const artistId of new Set(works.map((w) => w.artistId).filter((x): x is string => !!x))) await ensureApplication(artistId, showId);
+  for (const w of works) await log({ artistId: w.artistId, workId: w.id, showId, kind: "move", body: `"${w.title}" put forward for ${show.name}`, actor });
+  revalidatePath("/admin", "layout");
+}
+
+/** Makes sure an artist has an application row for a show, so they appear on its review board. */
+async function ensureApplication(artistId: string, showId: string) {
+  const [existing] = await db
+    .select({ id: s.applications.id })
+    .from(s.applications)
+    .where(and(eq(s.applications.artistId, artistId), eq(s.applications.showId, showId)));
+  if (existing) return existing.id;
+  const id = `app_${showId}_${artistId}`.slice(0, 120);
+  await db
+    .insert(s.applications)
+    .values({ id, artistId, showId, status: "New", submittedOn: new Date().toISOString().slice(0, 10) })
+    .onConflictDoNothing();
+  return id;
 }
 
 export async function updateWork(
@@ -309,8 +357,11 @@ export async function updateWork(
   if (fields.unit !== undefined) set.unit = fields.unit === "cm" ? "cm" : "in";
   if (set.width !== undefined || set.height !== undefined) set.sizeConfidence = "high";
   if (!Object.keys(set).length) return;
+  const [before] = await db.select().from(s.works).where(eq(s.works.id, workId));
+  if (!before) throw new Error("That work no longer exists");
   const [w] = await db.update(s.works).set(set).where(eq(s.works.id, workId)).returning({ artistId: s.works.artistId, title: s.works.title });
-  await log({ artistId: w?.artistId, workId, kind: "edit", body: `"${w?.title}" edited`, actor });
+  const changed = await recordWorkChanges({ workId, artistId: w?.artistId ?? null, before, after: set, actor, role: "arrae" });
+  if (changed.length) await log({ artistId: w?.artistId, workId, kind: "edit", body: `"${w?.title}" edited: ${changed.map((f) => TRACKED_FIELDS[f].toLowerCase()).join(", ")}`, actor });
   revalidatePath("/admin", "layout");
 }
 
@@ -366,4 +417,32 @@ export async function sendMessageToArtists(artistIds: string[], message: EmailCo
   await log({ kind: "email-batch", body: `"${m.subject}" sent to ${sent} artist${sent === 1 ? "" : "s"}${failures.length ? `, ${failures.length} failed` : ""}`, actor });
   revalidatePath("/admin/messages");
   return { sent, failed: failures.length, skipped, firstError: failures[0]?.error ?? null };
+}
+
+// ---- ARRAE bios from the Shopify artist collections ----
+
+/** Copies each artist collection's description into ARRAE bios that are still empty. Never overwrites. */
+export async function fillBiosFromShopify() {
+  const actor = await requireAdmin();
+  const collections = await fetchStoreCollections();
+  const artists = await db.select({ id: s.artists.id, name: s.artists.name, arraeBio: s.artists.arraeBio, handle: s.artists.shopifyCollectionHandle }).from(s.artists);
+  const { matches, unmatched } = matchCollections(artists, collections);
+  const filled: string[] = [];
+  const kept: string[] = [];
+  for (const { artist, collection } of matches) {
+    const set: Partial<typeof s.artists.$inferInsert> = {};
+    if (!artist.arraeBio?.trim()) set.arraeBio = collection.bio;
+    if (!artist.handle) set.shopifyCollectionHandle = collection.handle;
+    if (!Object.keys(set).length) {
+      kept.push(artist.name);
+      continue;
+    }
+    await db.update(s.artists).set(set).where(eq(s.artists.id, artist.id));
+    if (set.arraeBio) {
+      filled.push(artist.name);
+      await log({ artistId: artist.id, kind: "edit", body: `ARRAE bio filled from Shopify collection "${collection.title}"`, actor });
+    }
+  }
+  revalidatePath("/admin/artists", "layout");
+  return { filled, kept: kept.length, unmatched: unmatched.map((c) => c.title) };
 }

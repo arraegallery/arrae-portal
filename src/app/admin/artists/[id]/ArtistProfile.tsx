@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { addNote, updateArtist, updateWork } from "../../actions";
+import { addNote, addWorksToShow, setOnboardingStep, updateArtist, updateWork } from "../../actions";
+import { ARTIST_ONBOARDING, SHOW_ONBOARDING, readOnboarding, type Onboarding } from "@/lib/onboarding";
+import { TRACKED_FIELDS } from "@/lib/change-fields";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { getArtistProfile } from "@/lib/queries";
 import { STATUS_TONE } from "@/lib/status";
@@ -20,13 +22,8 @@ const FIELDS = [
   ["shopifyCollectionHandle", "Shopify collection handle"],
 ] as const;
 
-const ONBOARDING = [
-  ["agreement", "Agreement signed"],
-  ["w9", "W-9 received"],
-  ["dropoffScheduled", "Drop-off scheduled"],
-  ["meetGreet", "Meet & greet"],
-  ["coaRequested", "COA requested"],
-] as const;
+type Change = Profile["changes"][number];
+type ShowOption = Profile["shows"][number];
 
 export function ArtistProfile({ profile }: { profile: Profile }) {
   const a = profile.artist;
@@ -44,7 +41,7 @@ export function ArtistProfile({ profile }: { profile: Profile }) {
   };
   const [form, setForm] = useState(initial);
   const [saved, setSaved] = useState(initial);
-  const [onboarding, setOnboarding] = useState<Record<string, boolean | string>>(a.onboarding ?? {});
+  const [onboarding, setOnboarding] = useState<Onboarding>(readOnboarding(a.onboarding));
   const [status, setStatus] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const dirty = (Object.keys(form) as (keyof typeof form)[]).filter((k) => form[k] !== saved[k]);
@@ -62,11 +59,21 @@ export function ArtistProfile({ profile }: { profile: Profile }) {
       }
     });
   }
-  function toggleOnboarding(key: string) {
-    const next = { ...onboarding, [key]: !onboarding[key] };
+  function toggleOnboarding(key: string, showId: string | null) {
+    const current = showId ? !!onboarding.shows?.[showId]?.[key] : !!onboarding[key];
+    const next: Onboarding = showId
+      ? { ...onboarding, shows: { ...(onboarding.shows ?? {}), [showId]: { ...(onboarding.shows?.[showId] ?? {}), [key]: !current } } }
+      : { ...onboarding, [key]: !current };
     setOnboarding(next);
-    startTransition(() => updateArtist(a.id, { onboarding: next }));
+    startTransition(async () => {
+      try {
+        setOnboarding(await setOnboardingStep(a.id, key, showId, !current));
+      } catch (e) {
+        setStatus((e as Error).message);
+      }
+    });
   }
+  const inShows = profile.showHistory.filter((h) => h.exhibited);
 
   const input = "w-full rounded-md bg-white px-3 py-2 text-sm ring-1 ring-line focus:ring-ink";
   return (
@@ -127,27 +134,76 @@ export function ArtistProfile({ profile }: { profile: Profile }) {
           </label>
 
           <div>
+            <h2 className="text-xs uppercase tracking-wider text-muted">Shows</h2>
+            {profile.showHistory.length === 0 ? (
+              <p className="mt-2 text-sm text-muted">Not in any show yet.</p>
+            ) : (
+              <ul className="mt-2 divide-y divide-line rounded-lg bg-white text-sm ring-1 ring-line">
+                {profile.showHistory.map((h) => (
+                  <li key={h.showId} className="flex items-center gap-3 px-3 py-2">
+                    <Link href={`/admin/review/${h.showId}`} className="font-medium hover:underline">
+                      {h.name}
+                    </Link>
+                    <span className="text-xs text-muted">{h.type}</span>
+                    <span className="ml-auto text-xs">
+                      {h.exhibited ? (
+                        <span className={`rounded-full px-2 py-0.5 ring-1 ${STATUS_TONE.Selected}`}>
+                          Exhibited{h.selectedWorks ? ` · ${h.selectedWorks} work${h.selectedWorks === 1 ? "" : "s"}` : ""}
+                        </span>
+                      ) : (
+                        <span className="text-muted">
+                          {h.status ?? "Submitted"} · {h.works} work{h.works === 1 ? "" : "s"} submitted
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div>
             <h2 className="text-xs uppercase tracking-wider text-muted">Onboarding</h2>
             <div className="mt-2 flex flex-wrap gap-2">
-              {ONBOARDING.map(([k, label]) => (
-                <button
-                  key={k}
-                  onClick={() => toggleOnboarding(k)}
-                  className={`rounded-full px-3 py-1 text-xs ring-1 ${onboarding[k] ? STATUS_TONE.Selected : "bg-white ring-line"}`}
-                >
-                  {onboarding[k] ? "✓ " : ""}
-                  {label}
-                </button>
+              {ARTIST_ONBOARDING.map(([k, label]) => (
+                <Chip key={k} done={!!onboarding[k]} label={label} onClick={() => toggleOnboarding(k, null)} />
               ))}
             </div>
+            {inShows.length === 0 ? (
+              <p className="mt-2 text-xs text-muted">Show checklists appear here once the artist is selected for a show.</p>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {inShows.map((h) => {
+                  const steps = onboarding.shows?.[h.showId] ?? {};
+                  const done = SHOW_ONBOARDING.filter(([k]) => steps[k]).length;
+                  return (
+                    <div key={h.showId}>
+                      <p className="text-xs">
+                        <span className="font-medium">{h.name}</span>{" "}
+                        <span className="text-muted">
+                          {done} of {SHOW_ONBOARDING.length}
+                        </span>
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {SHOW_ONBOARDING.map(([k, label]) => (
+                          <Chip key={k} done={!!steps[k]} label={label} onClick={() => toggleOnboarding(k, h.showId)} />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
+
+          <ChangeLog changes={profile.changes} works={profile.works} />
         </section>
 
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted">Works ({profile.works.length})</h2>
           <ul className="mt-3 space-y-3">
             {profile.works.map((w) => (
-              <WorkRow key={w.id} work={w} />
+              <WorkRow key={w.id} work={w} shows={profile.shows} changes={profile.changes.filter((c) => c.workId === w.id)} />
             ))}
           </ul>
           <ArtistNotes artistId={a.id} notes={profile.notes} works={profile.works} />
@@ -175,8 +231,67 @@ export function ArtistProfile({ profile }: { profile: Profile }) {
   );
 }
 
-function WorkRow({ work: initial }: { work: Work }) {
+function Chip({ done, label, onClick }: { done: boolean; label: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className={`rounded-full px-3 py-1 text-xs ring-1 ${done ? STATUS_TONE.Selected : "bg-white ring-line"}`}>
+      {done ? "✓ " : ""}
+      {label}
+    </button>
+  );
+}
+
+const money = (v: string | null) => (v === null ? "no price" : formatPrice(Number(v)));
+function describeChange(c: Change) {
+  const label = TRACKED_FIELDS[c.field as keyof typeof TRACKED_FIELDS] ?? c.field;
+  if (c.field === "priceUsd") return `Price ${money(c.oldValue)} → ${money(c.newValue)}`;
+  if (c.field === "soldAt") return c.newValue ? "Marked sold" : "Marked available";
+  if (c.field === "description") return "Description edited";
+  return `${label} “${c.oldValue ?? "—"}” → “${c.newValue ?? "—"}”`;
+}
+const who = (c: Change) => (c.role === "artist" ? "by the artist" : c.actor ? `by ${c.actor.split("@")[0]}` : "");
+const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+function ChangeLog({ changes, works }: { changes: Change[]; works: Work[] }) {
+  const titleOf = new Map(works.map((w) => [w.id, w.title]));
+  const prices = changes.filter((c) => c.field === "priceUsd");
+  return (
+    <div>
+      <h2 className="text-xs uppercase tracking-wider text-muted">Change log</h2>
+      {changes.length === 0 ? (
+        <p className="mt-2 text-sm text-muted">No edits to these works yet. Price, title and size changes will be listed here.</p>
+      ) : (
+        <>
+          {prices.length > 0 && (
+            <ul className="mt-2 space-y-1 rounded-lg bg-amber-50 p-3 text-sm ring-1 ring-amber-200">
+              {prices.slice(0, 8).map((c) => (
+                <li key={c.id}>
+                  <span className="font-medium">{titleOf.get(c.workId) ?? "A work"}</span>: {describeChange(c)}{" "}
+                  <span className="text-xs text-muted">
+                    {when(c.at)} {who(c)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs text-muted">All {changes.length} changes</summary>
+            <ul className="mt-2 space-y-1 text-xs">
+              {changes.map((c) => (
+                <li key={c.id} className={c.field === "priceUsd" ? "font-medium" : ""}>
+                  {when(c.at)} · {titleOf.get(c.workId) ?? "A work"}: {describeChange(c)} <span className="text-muted">{who(c)}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </>
+      )}
+    </div>
+  );
+}
+
+function WorkRow({ work: initial, shows, changes }: { work: Work; shows: ShowOption[]; changes: Change[] }) {
   const [work, setWork] = useState(initial);
+  const [putForward, setPutForward] = useState("");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -236,13 +351,52 @@ function WorkRow({ work: initial }: { work: Work }) {
                 Edit
               </button>
             </div>
-            <div className="mt-1.5 flex flex-wrap gap-1">
+            <div className="mt-1.5 flex flex-wrap items-center gap-1">
               {work.shows.map((s) => (
                 <span key={s.showId} className={`rounded-full px-2 py-0.5 text-[11px] ring-1 ${STATUS_TONE[s.status] ?? STATUS_TONE.Submitted}`}>
                   {s.name}: {s.status}
                 </span>
               ))}
+              {!work.sold && (
+                <select
+                  value={putForward}
+                  disabled={pending}
+                  onChange={(e) => {
+                    const showId = e.target.value;
+                    if (!showId) return;
+                    setPutForward(showId);
+                    const name = shows.find((x) => x.id === showId)?.name ?? showId;
+                    startTransition(async () => {
+                      try {
+                        await addWorksToShow([work.id], showId);
+                        setWork({ ...work, shows: [...work.shows, { showId, name, status: "Submitted" }] });
+                      } catch (err) {
+                        setError((err as Error).message);
+                      }
+                      setPutForward("");
+                    });
+                  }}
+                  className="w-auto rounded-full bg-white py-0.5 pl-2 pr-6 text-[11px] text-muted ring-1 ring-line"
+                >
+                  <option value="">+ Put forward for…</option>
+                  {shows
+                    .filter((x) => !work.shows.some((ws) => ws.showId === x.id))
+                    .map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {x.name}
+                        {x.open ? " (open)" : ""}
+                      </option>
+                    ))}
+                </select>
+              )}
             </div>
+            {changes.length > 0 && (
+              <p className="mt-1 text-[11px] text-muted">
+                {changes.some((c) => c.field === "priceUsd") && <span className="text-amber-800">Price changed · </span>}
+                Last edit {when(changes[0].at)} {who(changes[0])}
+              </p>
+            )}
+            {error && <p className="mt-1 text-xs text-rose-700">{error}</p>}
           </>
         ) : (
           <div className="grid grid-cols-6 gap-2">
