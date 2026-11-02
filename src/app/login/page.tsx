@@ -9,7 +9,20 @@ const MESSAGES: Record<string, string> = {
   "not-admin": "That email doesn't have access to the admin workspace.",
   "no-artist": "We couldn't find an artist profile for that email. Write to hello@arraegallery.com and we'll sort it out.",
   setup: "Sign-in isn't set up yet. Add the Supabase keys to the environment.",
+  password: "That email and password didn't match. Try again, or use the email link and set a new password under My account.",
 };
+
+/** Password sign-in, for the ARRAE team only. Artists always use the email link. */
+async function signInWithPassword(formData: FormData) {
+  "use server";
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  if (!email.includes("@") || !password || !(await teamRoleFor(email))) redirect("/login?error=password&team=1");
+  const supabase = await supabaseForRequest();
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) redirect("/login?error=password&team=1");
+  redirect("/admin");
+}
 
 async function sendLink(formData: FormData) {
   "use server";
@@ -25,8 +38,8 @@ async function sendLink(formData: FormData) {
   redirect("/login?error=sent");
 }
 
-export default async function Login({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
+export default async function Login({ searchParams }: { searchParams: Promise<{ error?: string; team?: string }> }) {
+  const { error, team } = await searchParams;
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4 text-center">
       <h1 className="flex justify-center">
@@ -48,6 +61,17 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
           Email me a link
         </button>
       </form>
+      <details open={!!team} className="mt-10 text-left text-sm">
+        <summary className="cursor-pointer text-center text-muted">ARRAE team: sign in with a password</summary>
+        <form action={signInWithPassword} className="mt-4 flex flex-col gap-3">
+          <input name="email" type="email" required autoComplete="username" placeholder="hello@arraegallery.com" className="rounded-md border border-line bg-white px-3 py-2" />
+          <input name="password" type="password" required autoComplete="current-password" placeholder="Password" className="rounded-md border border-line bg-white px-3 py-2" />
+          <button disabled={!supabaseConfigured} className="rounded-md bg-white px-3 py-2 ring-1 ring-line disabled:opacity-40">
+            Sign in
+          </button>
+          <p className="text-xs text-muted">No password yet? Sign in with the email link once, then choose one under My account (click your email at the top right).</p>
+        </form>
+      </details>
     </main>
   );
 }

@@ -75,10 +75,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             )}
           </nav>
           <SearchBox />
-          <span className="text-xs text-muted">
+          <Link href="/admin/account" className="text-xs text-muted hover:text-ink hover:underline" title="My account: password and sign out">
             {email}
             {!owner && " · team"}
-          </span>
+          </Link>
         </div>
       </header>
       {children}
