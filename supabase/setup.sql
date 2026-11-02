@@ -318,4 +318,16 @@ ALTER TABLE "documents" ADD CONSTRAINT "documents_artist_id_artists_id_fk" FOREI
 ALTER TABLE "documents" ADD CONSTRAINT "documents_show_id_shows_id_fk" FOREIGN KEY ("show_id") REFERENCES "public"."shows"("id") ON DELETE set null ON UPDATE no action;
 ALTER TABLE "documents" ENABLE ROW LEVEL SECURITY;
 INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('abdd0244cdeaa65777e346482c7e36a0a6d580fa0e57c71deaa0e3ca53586e12', 1793645740351);
+
+-- 0010_artist_last_seen
+ALTER TABLE "artists" ADD COLUMN "last_seen_at" timestamp with time zone;
+DO $$ BEGIN
+  IF to_regclass('auth.users') IS NOT NULL THEN
+    UPDATE "artists" a SET "last_seen_at" = u.last_sign_in_at
+    FROM (SELECT lower(email) AS email, max(last_sign_in_at) AS last_sign_in_at FROM auth.users WHERE last_sign_in_at IS NOT NULL GROUP BY 1) u
+    WHERE u.email = lower(trim(a."email"));
+  END IF;
+EXCEPTION WHEN insufficient_privilege THEN NULL;
+END $$;
+INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('1738cfb5f70640ac0ba1f7d36e35ecbc7d188527c9526dd290f900edaf049b43', 1793647125311);
 COMMIT;

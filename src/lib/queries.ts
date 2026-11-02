@@ -362,14 +362,14 @@ export async function getArtistProfile(artistId: string) {
 
 export async function getArtistDirectory() {
   const [artists, works, apps] = await Promise.all([
-    db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email, arraeBio: s.artists.arraeBio }).from(s.artists).orderBy(asc(s.artists.name)),
+    db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email, arraeBio: s.artists.arraeBio, lastSeenAt: s.artists.lastSeenAt }).from(s.artists).orderBy(asc(s.artists.name)),
     db.select({ artistId: s.works.artistId }).from(s.works),
     db.select({ artistId: s.applications.artistId, status: s.applications.status }).from(s.applications),
   ]);
   const count = new Map<string, number>();
   for (const w of works) if (w.artistId) count.set(w.artistId, (count.get(w.artistId) ?? 0) + 1);
   const selected = new Set(apps.filter((a) => a.status === "Selected").map((a) => a.artistId));
-  return artists.map((a) => ({ ...a, works: count.get(a.id) ?? 0, everSelected: selected.has(a.id), hasArraeBio: !!a.arraeBio }));
+  return artists.map(({ lastSeenAt, ...a }) => ({ ...a, lastSeen: lastSeenAt?.toISOString() ?? null, works: count.get(a.id) ?? 0, everSelected: selected.has(a.id), hasArraeBio: !!a.arraeBio }));
 }
 
 /** Everyone we could email, with what they've applied to, for the Messages page. */

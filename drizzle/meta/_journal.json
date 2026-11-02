@@ -71,6 +71,13 @@
       "when": 1793645740351,
       "tag": "0009_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793647125311,
+      "tag": "0010_artist_last_seen",
+      "breakpoints": true
     }
   ]
 }
