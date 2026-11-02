@@ -6,42 +6,28 @@
  *   npm run import:images                     # everything not yet copied
  *   npm run import:images -- --show volume-iv # one show first
  *
- * Needs DATABASE_URL, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, AIRTABLE_TOKEN.
+ * Needs NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, AIRTABLE_TOKEN.
  */
-import { createClient } from "@supabase/supabase-js";
-import { and, eq, inArray, isNull } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import * as s from "../src/db/schema";
+import { env, selectAll, supabase } from "./supabase-admin";
 
 const BUCKET = "artworks";
 const ARTWORKS_TABLE = "tblCv4un1MmJCzPIJ";
 const IMAGE_FIELD = "fldER1u2cLWKFJ9Ku";
 
-const env = (k: string) => {
-  const v = process.env[k];
-  if (!v) throw new Error(`${k} is not set`);
-  return v;
-};
 const showArg = process.argv.indexOf("--show");
 const onlyShow = showArg > -1 ? process.argv[showArg + 1] : null;
-
-const client = postgres(env("DATABASE_URL"), { max: 2, prepare: false });
-const db = drizzle(client, { schema: s });
-const supabase = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
 
 const { data: buckets } = await supabase.storage.listBuckets();
 if (!buckets?.some((b) => b.name === BUCKET)) await supabase.storage.createBucket(BUCKET, { public: false });
 
 // Which images still need copying
-let pending = await db
-  .select({ id: s.workImages.id, workId: s.workImages.workId, record: s.works.airtableRecordId })
-  .from(s.workImages)
-  .innerJoin(s.works, eq(s.works.id, s.workImages.workId))
-  .where(isNull(s.workImages.storagePath));
+type Pending = { id: string; work_id: string; works: { airtable_record_id: string | null } };
+let pending = (
+  await selectAll<Pending>("work_images", "id, work_id, works!inner(airtable_record_id)", (q) => q.is("storage_path", null))
+).map((p) => ({ id: p.id, workId: p.work_id, record: p.works.airtable_record_id }));
 if (onlyShow) {
-  const inShow = await db.select({ workId: s.showWorks.workId }).from(s.showWorks).where(eq(s.showWorks.showId, onlyShow));
-  const ids = new Set(inShow.map((r) => r.workId));
+  const inShow = await selectAll<{ work_id: string }>("show_works", "work_id", (q) => q.eq("show_id", onlyShow));
+  const ids = new Set(inShow.map((r) => r.work_id));
   pending = pending.filter((p) => ids.has(p.workId));
 }
 console.log(`${pending.length} images to copy`);
@@ -81,10 +67,12 @@ for (let i = 0; i < records.length; i += 50) {
         const base = `works/${p.workId}/${att.id}`;
         await copy(full, `${base}.jpg`, att.type);
         await copy(thumb, `${base}-thumb.jpg`, att.type);
-        await db
-          .update(s.workImages)
-          .set({ storagePath: `${base}.jpg`, thumbPath: `${base}-thumb.jpg`, widthPx: att.width ?? null, heightPx: att.height ?? null })
-          .where(and(eq(s.workImages.id, att.id), inArray(s.workImages.workId, [p.workId])));
+        const { error } = await supabase
+          .from("work_images")
+          .update({ storage_path: `${base}.jpg`, thumb_path: `${base}-thumb.jpg`, width_px: att.width ?? null, height_px: att.height ?? null })
+          .eq("id", att.id)
+          .eq("work_id", p.workId);
+        if (error) throw error;
         done++;
       } catch (e) {
         failed++;
@@ -94,4 +82,3 @@ for (let i = 0; i < records.length; i += 50) {
   }
   console.log(`${done} copied, ${failed} failed`);
 }
-await client.end();

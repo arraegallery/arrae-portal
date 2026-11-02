@@ -18,9 +18,11 @@ Next.js (App Router) · Postgres via Drizzle · Supabase (database, email-link s
 
 1. Copy `.env.example` to `.env.local` and fill it in.
 2. `npm install`
-3. `npm run db:migrate` to create the tables.
+3. `npm run db:migrate` to create the tables. If you can't connect to Postgres directly (for example from a cloud sandbox), paste `supabase/setup.sql` into the Supabase SQL Editor instead; it records the migrations, so `db:migrate` skips them later. Regenerate it with `npx tsx scripts/build-setup-sql.ts` after adding a migration.
 4. `npm run import:airtable -- path/to/arrae_clean.json` to load the cleaned Airtable export. Safe to re-run; it never overwrites decisions made in the app.
 5. `npm run import:images -- --show volume-iv` to copy images from Airtable into Supabase Storage (needs `AIRTABLE_TOKEN`). Run it again without `--show` for everything else.
+
+Both import scripts talk to Supabase over HTTPS with the service role key, not to Postgres. Behind an HTTPS proxy, run them with `NODE_USE_ENV_PROXY=1` so Node's fetch uses it.
 6. `npm run dev`
 
 For local work without sign-in, set `DEV_AUTH_BYPASS=true` (ignored in production).
