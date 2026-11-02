@@ -330,4 +330,23 @@ DO $$ BEGIN
 EXCEPTION WHEN insufficient_privilege THEN NULL;
 END $$;
 INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('1738cfb5f70640ac0ba1f7d36e35ecbc7d188527c9526dd290f900edaf049b43', 1793647125311);
+
+-- 0011_gallery_calendar
+CREATE TABLE "gallery_events" (
+	"id" text PRIMARY KEY NOT NULL,
+	"title" text NOT NULL,
+	"kind" text DEFAULT 'event' NOT NULL,
+	"starts_on" date NOT NULL,
+	"ends_on" date,
+	"start_time" text,
+	"end_time" text,
+	"location" text,
+	"notes" text,
+	"show_id" text,
+	"created_by" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+ALTER TABLE "gallery_events" ADD CONSTRAINT "gallery_events_show_id_shows_id_fk" FOREIGN KEY ("show_id") REFERENCES "public"."shows"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "gallery_events" ENABLE ROW LEVEL SECURITY;
+INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('9eb71ab389245ec843428d123f798132ce2919857da0602f310bd41b9f46d5ca', 1793658595177);
 COMMIT;
