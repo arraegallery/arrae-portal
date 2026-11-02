@@ -260,3 +260,7 @@ export async function getSandboxWorkIds(showId: string) {
   const rows = await db.select({ id: s.sandboxItems.workId }).from(s.sandboxItems).where(eq(s.sandboxItems.showId, showId));
   return rows.map((r) => r.id);
 }
+
+export async function getArtistList() {
+  return db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email }).from(s.artists).orderBy(asc(s.artists.name));
+}

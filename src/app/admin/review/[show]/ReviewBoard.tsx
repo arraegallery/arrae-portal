@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { ShowTabs } from "@/components/ShowTabs";
-import { addNote, addToSandbox, removeFromSandbox, setApplicationStatus, setWorkStatus } from "../../actions";
+import { addNote, addToSandbox, moveWorksToShow, reassignWorks, removeFromSandbox, removeWorksFromShow, setApplicationStatus, setWorkStatus } from "../../actions";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { BoardEntry, BoardWork } from "@/lib/queries";
 import {
@@ -31,10 +31,14 @@ export function ReviewBoard({
   show,
   entries: initial,
   sandboxIds,
+  shows,
+  artists,
 }: {
   show: { id: string; name: string; type: string };
   entries: BoardEntry[];
   sandboxIds: string[];
+  shows: { id: string; name: string }[];
+  artists: { id: string; name: string; email: string }[];
 }) {
   const [entries, setEntries] = useState(initial);
   useEffect(() => setEntries(initial), [initial]);
@@ -329,7 +333,7 @@ export function ReviewBoard({
         </div>
       )}
 
-      {artist && <ArtistDrawer entry={artist} showId={show.id} showName={show.name} onClose={() => setOpenArtist(null)} onDecide={updateApplication} onAddNote={(body) => saveNote(artist.artist.id, body)} onOpenWork={(id) => setOpenWork({ artistId: artist.artist.id, workId: id })} />}
+      {artist && <ArtistDrawer entry={artist} showId={show.id} showName={show.name} onClose={() => setOpenArtist(null)} onDecide={updateApplication} onAddNote={(body) => saveNote(artist.artist.id, body)} shows={shows} artists={artists} onOpenWork={(id) => setOpenWork({ artistId: artist.artist.id, workId: id })} />}
     </main>
   );
 }
@@ -403,6 +407,8 @@ function ArtistDrawer({
   onClose,
   onDecide,
   onAddNote,
+  shows,
+  artists,
   onOpenWork,
 }: {
   entry: BoardEntry;
@@ -411,6 +417,8 @@ function ArtistDrawer({
   onClose: () => void;
   onDecide: (artistId: string, applicationId: string, s: ApplicationStatus) => void;
   onAddNote: (body: string) => void;
+  shows: { id: string; name: string }[];
+  artists: { id: string; name: string; email: string }[];
   onOpenWork: (workId: string) => void;
 }) {
   const a = entry.artist;
@@ -486,6 +494,8 @@ function ArtistDrawer({
           </section>
         )}
 
+        <FixSubmission entry={entry} showId={showId} showName={showName} shows={shows} artists={artists} onDone={onClose} />
+
         {entry.notes.some((n) => n.kind !== "note") && (
           <details className="mt-6">
             <summary className="cursor-pointer text-xs uppercase tracking-wider text-muted">Decision history</summary>
@@ -558,6 +568,193 @@ function NotesBox({
           })}
         </ul>
       )}
+    </section>
+  );
+}
+
+/** For submissions that landed in the wrong show, or under the wrong artist. */
+function FixSubmission({
+  entry,
+  showId,
+  showName,
+  shows,
+  artists,
+  onDone,
+}: {
+  entry: BoardEntry;
+  showId: string;
+  showName: string;
+  shows: { id: string; name: string }[];
+  artists: { id: string; name: string; email: string }[];
+  onDone: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(entry.works.map((w) => w.id)));
+  const [mode, setMode] = useState<"move" | "artist" | "remove">("move");
+  const [toShow, setToShow] = useState("");
+  const [artistQuery, setArtistQuery] = useState("");
+  const [toArtist, setToArtist] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const ids = [...picked];
+  const allPicked = picked.size === entry.works.length;
+  const matches = artistQuery.trim()
+    ? artists.filter((a) => a.id !== entry.artist.id && (a.name + " " + a.email).toLowerCase().includes(artistQuery.trim().toLowerCase())).slice(0, 6)
+    : [];
+
+  function run(fn: () => Promise<unknown>) {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await fn();
+        onDone();
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    });
+  }
+
+  if (!open)
+    return (
+      <button onClick={() => setOpen(true)} className="mt-6 text-sm text-muted underline">
+        Wrong show or wrong artist? Fix this submission
+      </button>
+    );
+
+  const tab = (m: typeof mode, label: string) => (
+    <button onClick={() => setMode(m)} className={`rounded-full px-2.5 py-1 text-xs ring-1 ${mode === m ? "bg-ink text-white ring-ink" : "ring-line"}`}>
+      {label}
+    </button>
+  );
+
+  return (
+    <section className="mt-6 rounded-lg bg-white p-4 ring-1 ring-line">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs uppercase tracking-wider text-muted">Fix this submission</h3>
+        <button onClick={() => setOpen(false)} className="text-xs text-muted">
+          Cancel
+        </button>
+      </div>
+      <p className="mt-2 text-xs text-muted">1. Which works? ({picked.size} of {entry.works.length})</p>
+      <div className="mt-1 grid grid-cols-4 gap-2">
+        {entry.works.map((w) => {
+          const on = picked.has(w.id);
+          return (
+            <button
+              key={w.id}
+              onClick={() =>
+                setPicked((p) => {
+                  const n = new Set(p);
+                  if (n.has(w.id)) n.delete(w.id);
+                  else n.add(w.id);
+                  return n;
+                })
+              }
+              className={`relative overflow-hidden rounded ring-2 ${on ? "ring-ink" : "ring-transparent opacity-50"}`}
+              title={w.title}
+            >
+              <ArtworkImage image={w.images[0]} title={w.title} fallbackRatio={1} />
+              {on && <span className="absolute right-1 top-1 rounded-full bg-ink px-1 text-[10px] text-white">✓</span>}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-3 text-xs text-muted">2. What's wrong?</p>
+      <div className="mt-1 flex flex-wrap gap-1">
+        {tab("move", "Belongs in another show")}
+        {tab("artist", "Belongs to another artist")}
+        {tab("remove", `Shouldn't be in ${showName}`)}
+      </div>
+
+      {mode === "move" && (
+        <div className="mt-3 space-y-2 text-sm">
+          <select value={toShow} onChange={(e) => setToShow(e.target.value)} className="w-full rounded-md px-2 py-1.5 ring-1 ring-line">
+            <option value="">Move to…</option>
+            {shows
+              .filter((x) => x.id !== showId)
+              .map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                </option>
+              ))}
+          </select>
+          <p className="text-xs text-muted">
+            Decisions move with the works. {entry.application && allPicked ? "Their application moves too." : ""} If a work is already in that show, this just
+            removes the extra copy here.
+          </p>
+          <button
+            disabled={!toShow || !ids.length || pending}
+            onClick={() => run(() => moveWorksToShow(showId, toShow, ids, allPicked ? entry.application?.id : undefined))}
+            className="rounded-md bg-ink px-3 py-1.5 text-white disabled:opacity-40"
+          >
+            {pending ? "Moving…" : `Move ${ids.length} work${ids.length === 1 ? "" : "s"}`}
+          </button>
+        </div>
+      )}
+
+      {mode === "artist" && (
+        <div className="mt-3 space-y-2 text-sm">
+          <input
+            value={artistQuery}
+            onChange={(e) => {
+              setArtistQuery(e.target.value);
+              setToArtist(null);
+            }}
+            placeholder="Search existing artists by name or email"
+            className="w-full rounded-md px-2 py-1.5 ring-1 ring-line"
+          />
+          {matches.length > 0 && !toArtist && (
+            <ul className="rounded-md ring-1 ring-line">
+              {matches.map((a) => (
+                <li key={a.id}>
+                  <button
+                    onClick={() => {
+                      setToArtist(a.id);
+                      setArtistQuery(a.name);
+                    }}
+                    className="block w-full px-2 py-1.5 text-left hover:bg-paper"
+                  >
+                    {a.name} <span className="text-xs text-muted">{a.email}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {!toArtist && (
+            <div className="rounded-md bg-paper p-2">
+              <p className="text-xs text-muted">Not here yet? Create the artist:</p>
+              <div className="mt-1 flex gap-2">
+                <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name" className="min-w-0 flex-1 rounded-md px-2 py-1.5 ring-1 ring-line" />
+                <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Email" type="email" className="min-w-0 flex-1 rounded-md px-2 py-1.5 ring-1 ring-line" />
+              </div>
+            </div>
+          )}
+          <p className="text-xs text-muted">The works keep their decisions in every show. {entry.artist.name}'s record and application stay as they are.</p>
+          <button
+            disabled={!ids.length || pending || (!toArtist && !newName.trim())}
+            onClick={() => run(() => reassignWorks(ids, toArtist ? { artistId: toArtist } : { name: newName, email: newEmail }))}
+            className="rounded-md bg-ink px-3 py-1.5 text-white disabled:opacity-40"
+          >
+            {pending ? "Moving…" : `Give ${ids.length} work${ids.length === 1 ? "" : "s"} to ${toArtist ? artistQuery : newName.trim() || "…"}`}
+          </button>
+        </div>
+      )}
+
+      {mode === "remove" && (
+        <div className="mt-3 space-y-2 text-sm">
+          <p className="text-xs text-muted">The works stay in the artist's record and in any other show. They only leave {showName}.</p>
+          <button
+            disabled={!ids.length || pending}
+            onClick={() => run(() => removeWorksFromShow(showId, ids))}
+            className="rounded-md bg-ink px-3 py-1.5 text-white disabled:opacity-40"
+          >
+            {pending ? "Removing…" : `Take ${ids.length} work${ids.length === 1 ? "" : "s"} out of ${showName}`}
+          </button>
+        </div>
+      )}
+      {error && <p className="mt-2 text-xs text-rose-700">{error}</p>}
     </section>
   );
 }
