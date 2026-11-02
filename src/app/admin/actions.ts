@@ -576,3 +576,13 @@ export async function clearPhotoRequest(workId: string) {
   await db.update(s.works).set({ photosRequestedAt: null, photosRequestNote: null }).where(eq(s.works.id, workId));
   revalidateWorkPages(work.artistId);
 }
+
+/** The partnership terms applicants must agree to. Saving new wording asks new applicants to agree to it. */
+export async function saveApplicationTerms(text: string | null) {
+  await requireOwner();
+  const t = text?.trim() ?? "";
+  if (!t) await db.delete(s.appSettings).where(eq(s.appSettings.key, "application_terms"));
+  else await db.insert(s.appSettings).values({ key: "application_terms", value: t.slice(0, 30000) }).onConflictDoUpdate({ target: s.appSettings.key, set: { value: t.slice(0, 30000) } });
+  revalidatePath("/admin/shows");
+  revalidatePath("/apply/start");
+}

@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { eq } from "drizzle-orm";
+import { db, schema as s } from "@/db";
 import { teamRoleFor } from "@/lib/team";
 import { supabaseForRequest } from "@/lib/supabase/server";
 
@@ -12,6 +14,12 @@ export async function GET(request: NextRequest) {
     const { data } = await supabase.auth.exchangeCodeForSession(code);
     email = data.user?.email?.toLowerCase();
   }
-  const home = email && !(await teamRoleFor(email)) ? "/studio" : "/admin";
+  let home = "/admin";
+  if (email && !(await teamRoleFor(email))) {
+    // Someone who asked for a link from the application page goes back to their application.
+    const [signup] = await db.select().from(s.applicantSignups).where(eq(s.applicantSignups.email, email));
+    const applying = signup && !signup.submittedAt && signup.lastLinkAt && Date.now() - signup.lastLinkAt.getTime() < 24 * 3600 * 1000;
+    home = applying ? "/apply/start" : "/studio";
+  }
   return NextResponse.redirect(new URL(home, url.origin));
 }

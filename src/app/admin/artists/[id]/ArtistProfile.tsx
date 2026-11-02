@@ -7,6 +7,7 @@ import {
   addWorkPhotos,
   addWorksToShow,
   clearPhotoRequest,
+  moveWorksToShow,
   getWorkPhotos,
   makeWorkMainPhoto,
   prepareWorkPhotoUploads,
@@ -473,7 +474,7 @@ function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: W
                   }}
                   className="w-auto rounded-full bg-white py-0.5 pl-2 pr-6 text-[11px] text-muted ring-1 ring-line"
                 >
-                  <option value="">+ Put forward for…</option>
+                  <option value="">+ Also add to another show…</option>
                   {shows
                     .filter((x) => !work.shows.some((ws) => ws.showId === x.id))
                     .map((x) => (
@@ -482,6 +483,41 @@ function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: W
                         {x.open ? " (open)" : ""}
                       </option>
                     ))}
+                </select>
+              )}
+              {owner && work.shows.length > 0 && (
+                <select
+                  value=""
+                  disabled={pending}
+                  onChange={(e) => {
+                    const [from, to] = e.target.value.split("|");
+                    if (!from || !to) return;
+                    const toName = shows.find((x) => x.id === to)?.name ?? to;
+                    startTransition(async () => {
+                      try {
+                        await moveWorksToShow(from, to, [work.id]);
+                        const already = work.shows.some((x) => x.showId === to);
+                        const moved = work.shows.find((x) => x.showId === from)!;
+                        setWork({ ...work, shows: already ? work.shows.filter((x) => x.showId !== from) : work.shows.map((x) => (x.showId === from ? { ...moved, showId: to, name: toName } : x)) });
+                      } catch (err) {
+                        setError((err as Error).message);
+                      }
+                    });
+                  }}
+                  className="w-auto rounded-full bg-white py-0.5 pl-2 pr-6 text-[11px] text-muted ring-1 ring-line"
+                >
+                  <option value="">Move to another show…</option>
+                  {work.shows.map((from) => (
+                    <optgroup key={from.showId} label={`From ${from.name}`}>
+                      {shows
+                        .filter((x) => x.id !== from.showId)
+                        .map((x) => (
+                          <option key={x.id} value={`${from.showId}|${x.id}`}>
+                            {x.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ))}
                 </select>
               )}
             </div>
