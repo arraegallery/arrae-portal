@@ -22,6 +22,7 @@ export default async function ApplyPage({ searchParams }: { searchParams: Promis
         We welcome emerging and established artists working in painting, sculpture, ceramics, fiber, print and beyond, with original work priced between $100 and $10,000. You can
         apply with up to 3 works.
       </p>
+      <p className="mt-3 inline-block rounded-full bg-emerald-50 px-3 py-1 text-sm text-emerald-900 ring-1 ring-emerald-200">There is no application fee. It&rsquo;s free to apply.</p>
       {open.length > 0 ? (
         <p className="mt-3 text-sm">
           Now taking applications for <strong>{open.map((x) => x.name).join(", ")}</strong>.
