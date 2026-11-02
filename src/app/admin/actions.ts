@@ -182,3 +182,72 @@ export async function createShow(name: string, type: "Volume" | "Takeover" | "AR
   revalidatePath("/admin", "layout");
   return id;
 }
+
+// ---- Fixing submissions that landed in the wrong place ----
+
+/** Move works (and optionally the artist's application) from one show to another. Decisions travel with them. */
+export async function moveWorksToShow(fromShowId: string, toShowId: string, workIds: string[], applicationId?: string) {
+  const actor = await requireAdmin();
+  if (fromShowId === toShowId || !workIds.length) return;
+  const [target] = await db.select({ id: s.shows.id, name: s.shows.name }).from(s.shows).where(eq(s.shows.id, toShowId));
+  if (!target) throw new Error("Unknown show");
+  await db.transaction(async (tx) => {
+    const already = await tx
+      .select({ workId: s.showWorks.workId })
+      .from(s.showWorks)
+      .where(and(eq(s.showWorks.showId, toShowId), inArray(s.showWorks.workId, workIds)));
+    const dupes = already.map((r) => r.workId);
+    // Already in the target show: just drop the stray copy
+    if (dupes.length) await tx.delete(s.showWorks).where(and(eq(s.showWorks.showId, fromShowId), inArray(s.showWorks.workId, dupes)));
+    const rest = workIds.filter((id) => !dupes.includes(id));
+    if (rest.length) await tx.update(s.showWorks).set({ showId: toShowId }).where(and(eq(s.showWorks.showId, fromShowId), inArray(s.showWorks.workId, rest)));
+    if (applicationId) await tx.update(s.applications).set({ showId: toShowId }).where(eq(s.applications.id, applicationId));
+  });
+  const works = await db.select({ id: s.works.id, artistId: s.works.artistId, title: s.works.title }).from(s.works).where(inArray(s.works.id, workIds));
+  for (const w of works) await log({ artistId: w.artistId, workId: w.id, showId: toShowId, kind: "move", body: `"${w.title}" moved to ${target.name}`, actor });
+  revalidatePath("/admin", "layout");
+}
+
+/** Take works out of a show entirely (the works themselves are kept). */
+export async function removeWorksFromShow(showId: string, workIds: string[]) {
+  const actor = await requireAdmin();
+  if (!workIds.length) return;
+  const works = await db.select({ id: s.works.id, artistId: s.works.artistId, title: s.works.title }).from(s.works).where(inArray(s.works.id, workIds));
+  await db.delete(s.showWorks).where(and(eq(s.showWorks.showId, showId), inArray(s.showWorks.workId, workIds)));
+  await db.delete(s.sandboxItems).where(and(eq(s.sandboxItems.showId, showId), inArray(s.sandboxItems.workId, workIds)));
+  for (const w of works) await log({ artistId: w.artistId, workId: w.id, showId, kind: "move", body: `"${w.title}" taken out of this show`, actor });
+  revalidatePath("/admin", "layout");
+}
+
+/**
+ * Works that were submitted on someone else's behalf: give them to the right artist,
+ * either an existing one or a new artist record. Returns the artist id.
+ */
+export async function reassignWorks(workIds: string[], to: { artistId: string } | { name: string; email: string }) {
+  const actor = await requireAdmin();
+  if (!workIds.length) throw new Error("Pick at least one work");
+  let artistId: string;
+  if ("artistId" in to) {
+    const [a] = await db.select({ id: s.artists.id }).from(s.artists).where(eq(s.artists.id, to.artistId));
+    if (!a) throw new Error("Unknown artist");
+    artistId = a.id;
+  } else {
+    const name = to.name.trim().slice(0, 200);
+    const email = to.email.trim().toLowerCase().slice(0, 320);
+    if (!name) throw new Error("Give the artist a name");
+    const base = `art_${name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "artist"}`;
+    artistId = base;
+    for (let n = 2; (await db.select({ id: s.artists.id }).from(s.artists).where(eq(s.artists.id, artistId))).length; n++) artistId = `${base}-${n}`;
+    await db.insert(s.artists).values({ id: artistId, name, email });
+    await log({ artistId, kind: "artist", body: `Artist record created (works submitted on their behalf)`, actor });
+  }
+  const works = await db.select({ id: s.works.id, artistId: s.works.artistId, title: s.works.title }).from(s.works).where(inArray(s.works.id, workIds));
+  await db.update(s.works).set({ artistId }).where(inArray(s.works.id, workIds));
+  const [target] = await db.select({ name: s.artists.name }).from(s.artists).where(eq(s.artists.id, artistId));
+  for (const w of works) {
+    await log({ artistId: w.artistId, workId: w.id, kind: "move", body: `"${w.title}" moved to artist ${target?.name}`, actor });
+    await log({ artistId, workId: w.id, kind: "move", body: `"${w.title}" moved here from another artist record`, actor });
+  }
+  revalidatePath("/admin", "layout");
+  return artistId;
+}
