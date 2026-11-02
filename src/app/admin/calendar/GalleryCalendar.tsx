@@ -45,7 +45,7 @@ const dayRange = (start: string, end: string) => (start === end ? shortDay(start
 const input = "mt-0.5 w-full rounded-md bg-white px-2 py-1.5 text-sm text-ink ring-1 ring-line";
 const blank = (day: string): EventInput => ({ title: "", kind: "event", startsOn: day, endsOn: "", startTime: "", endTime: "", location: "", notes: "", showId: "" });
 
-export function GalleryCalendar({ today, feedUrl, shows, windows, events }: { today: string; feedUrl: string | null; shows: Show[]; windows: Window[]; events: Event[] }) {
+export function GalleryCalendar({ today, owner, feedUrl, shows, windows, events }: { today: string; owner: boolean; feedUrl: string | null; shows: Show[]; windows: Window[]; events: Event[] }) {
   const router = useRouter();
   const [month, setMonth] = useState(today.slice(0, 7));
   const [editing, setEditing] = useState<EventInput | null>(null);
@@ -54,7 +54,8 @@ export function GalleryCalendar({ today, feedUrl, shows, windows, events }: { to
   const items = useMemo<Item[]>(() => {
     const out: Item[] = [];
     for (const sh of shows) {
-      const open = () => setDating(sh);
+      // Show dates are owner-only; for staff a show just links to nothing.
+      const open = () => owner && setDating(sh);
       if (sh.opensOn || sh.closesOn) {
         const start = sh.opensOn ?? sh.closesOn!;
         const end = sh.closesOn && sh.closesOn >= start ? sh.closesOn : start;
@@ -103,7 +104,7 @@ export function GalleryCalendar({ today, feedUrl, shows, windows, events }: { to
     }
     // Shows first (they're long), then by start date.
     return out.sort((a, b) => a.start.localeCompare(b.start) || (b.end > a.end ? 1 : -1));
-  }, [shows, windows, events, router]);
+  }, [shows, windows, events, router, owner]);
 
   const first = `${month}-01`;
   const gridStart = addDays(first, -toDate(first).getUTCDay());
@@ -216,7 +217,7 @@ export function GalleryCalendar({ today, feedUrl, shows, windows, events }: { to
             <p className="rounded-lg bg-white p-4 text-sm text-muted ring-1 ring-line">Nothing on the calendar this month yet.</p>
           )}
         </div>
-        {undated.length > 0 && (
+        {owner && undated.length > 0 && (
           <div className="min-w-0">
             <h3 className="mb-2 font-display text-xl">Shows without dates</h3>
             <p className="mb-2 text-xs text-muted">Give a show its run dates to see it on the calendar.</p>
@@ -240,7 +241,7 @@ export function GalleryCalendar({ today, feedUrl, shows, windows, events }: { to
             Google Calendar: everything here, plus each drop-off and pick-up booking, is in your private calendar link. Copy it into Google Calendar under Other calendars, then From URL:{" "}
             <span className="break-all font-mono text-xs text-ink">{feedUrl}</span>
           </>
-        ) : (
+        ) : owner ? (
           <>
             Want this in Google Calendar? Turn on the private calendar link on the{" "}
             <Link href="/admin/logistics" className="underline">
@@ -248,7 +249,7 @@ export function GalleryCalendar({ today, feedUrl, shows, windows, events }: { to
             </Link>{" "}
             page.
           </>
-        )}
+        ) : null}
       </p>
 
       {editing && <EventForm value={editing} shows={shows} onClose={() => setEditing(null)} onSaved={() => (setEditing(null), router.refresh())} />}

@@ -3,7 +3,7 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema as s } from "@/db";
-import { requireOwner } from "@/lib/team";
+import { requireTeam } from "@/lib/team";
 import { EVENT_KINDS } from "./kinds";
 
 export type EventInput = {
@@ -24,7 +24,7 @@ const time = (v: string) => (/^\d{2}:\d{2}$/.test(v.trim()) ? v.trim() : null);
 const rand = () => crypto.randomUUID().replace(/-/g, "").slice(0, 14);
 
 export async function saveEvent(input: EventInput) {
-  const actor = await requireOwner();
+  const { email: actor } = await requireTeam();
   const title = input.title.trim().slice(0, 200);
   if (!title) throw new Error("Give the event a name");
   if (!isDate(input.startsOn)) throw new Error("Pick a start date");
@@ -46,7 +46,7 @@ export async function saveEvent(input: EventInput) {
 }
 
 export async function deleteEvent(id: string) {
-  await requireOwner();
+  await requireTeam();
   await db.delete(s.galleryEvents).where(eq(s.galleryEvents.id, id));
   revalidatePath("/admin/calendar");
 }

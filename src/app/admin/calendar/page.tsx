@@ -1,13 +1,14 @@
 import { asc, eq } from "drizzle-orm";
 import { db, schema as s } from "@/db";
-import { requireOwner } from "@/lib/team";
+import { requireTeam } from "@/lib/team";
 import { portalUrl } from "@/lib/notify";
 import { GalleryCalendar } from "./GalleryCalendar";
 
 export const metadata = { title: "Calendar · ARRAE" };
 
 export default async function CalendarPage() {
-  await requireOwner();
+  const me = await requireTeam();
+  const owner = me.role === "owner";
   const shows = await db
     .select({
       id: s.shows.id,
@@ -30,7 +31,8 @@ export default async function CalendarPage() {
   return (
     <GalleryCalendar
       today={today}
-      feedUrl={token ? portalUrl(`/api/calendar/${token.value}.ics`) : null}
+      owner={owner}
+      feedUrl={owner && token ? portalUrl(`/api/calendar/${token.value}.ics`) : null}
       shows={shows}
       windows={windows}
       events={events.map((e) => ({

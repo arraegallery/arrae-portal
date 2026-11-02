@@ -70,6 +70,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                   Inbox
                 </NavTop>
                 <NavTop href="/admin/logistics">Logistics</NavTop>
+                <NavTop href="/admin/calendar">Calendar</NavTop>
               </>
             )}
           </nav>
