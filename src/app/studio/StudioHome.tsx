@@ -19,7 +19,19 @@ const fmtSlot = (iso: string, o: Intl.DateTimeFormatOptions) => new Date(iso).to
 const input = "mt-0.5 w-full rounded-md bg-white px-3 py-2 text-sm text-ink ring-1 ring-line focus:ring-ink";
 const fmtDate = (d: string | null) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : null);
 
-export function StudioHome({ name, studio, unread, bookings }: { name: string; studio: Studio; unread: number; bookings: StudioBookings }) {
+export function StudioHome({
+  name,
+  studio,
+  unread,
+  bookings,
+  agreement,
+}: {
+  name: string;
+  studio: Studio;
+  unread: number;
+  bookings: StudioBookings;
+  agreement: { id: string; signed: boolean } | null;
+}) {
   const first = name.trim().split(/\s+/)[0];
   return (
     <main className="mx-auto max-w-5xl px-4 pb-24">
@@ -41,6 +53,27 @@ export function StudioHome({ name, studio, unread, bookings }: { name: string; s
           </Link>
         )}
       </section>
+
+      {agreement && !agreement.signed && (
+        <section className="mb-6 flex flex-wrap items-center gap-4 rounded-xl bg-ink p-5 text-white sm:p-6">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs uppercase tracking-[0.2em] text-white/70">One step before your show</p>
+            <h2 className="font-display text-2xl">Your Partnership Agreement is ready to sign</h2>
+            <p className="mt-1 text-sm text-white/80">Read it through and sign right here. It takes a couple of minutes.</p>
+          </div>
+          <Link href="/studio/agreement" className="rounded-md bg-white px-4 py-2 text-sm font-medium text-ink">
+            Read and sign
+          </Link>
+        </section>
+      )}
+      {agreement?.signed && (
+        <p className="mb-4 text-sm text-muted">
+          Your Partnership Agreement is signed.{" "}
+          <a href={`/api/agreements/${agreement.id}`} target="_blank" rel="noreferrer" className="underline">
+            Download your copy (PDF)
+          </a>
+        </p>
+      )}
 
       {bookings.map((b) => (
         <BookTime key={b.id} b={b} />

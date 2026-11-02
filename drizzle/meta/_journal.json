@@ -50,6 +50,13 @@
       "when": 1793641093622,
       "tag": "0006_applications",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793643264318,
+      "tag": "0007_agreements",
+      "breakpoints": true
     }
   ]
 }

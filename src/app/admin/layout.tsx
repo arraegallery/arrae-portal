@@ -50,6 +50,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <NavLink href="/admin/logistics">Logistics</NavLink>
             {owner && <NavLink href="/admin/messages">Email artists</NavLink>}
             {owner && <NavLink href="/admin/shows">Shows</NavLink>}
+            {owner && <NavLink href="/admin/agreements">Agreements</NavLink>}
             {owner && <NavLink href="/admin/shopify">Shopify</NavLink>}
             {owner && <NavLink href="/admin/team">Team</NavLink>}
             {owner && <ShowsMenu shows={shows.map((s) => ({ id: s.id, name: s.name, type: s.type }))} />}
