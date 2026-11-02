@@ -2,6 +2,7 @@
 BEGIN;
 CREATE SCHEMA IF NOT EXISTS "drizzle";
 CREATE TABLE IF NOT EXISTS "drizzle"."__drizzle_migrations" (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at bigint);
+ALTER TABLE "drizzle"."__drizzle_migrations" ENABLE ROW LEVEL SECURITY;
 
 -- 0000_init
 CREATE TYPE "public"."application_status" AS ENUM('New', 'In review', 'Shortlist', 'Waitlist', 'Selected', 'Request other works', 'Not selected', 'Withdrawn');
