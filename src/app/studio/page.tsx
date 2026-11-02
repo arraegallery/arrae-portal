@@ -1,12 +1,14 @@
 import { requireArtist } from "@/lib/artist-auth";
 import { getStudio } from "@/lib/studio";
 import { getStudioBookings } from "@/lib/logistics";
+import { currentAgreement } from "@/lib/agreement";
 import { StudioHome } from "./StudioHome";
 
 export default async function StudioPage() {
   const { artist, artistIds } = await requireArtist();
   const studio = await getStudio(artistIds);
   const bookings = await getStudioBookings(artistIds);
+  const agreement = await currentAgreement(artistIds);
   const unread = studio.messages.filter((m) => m.sender === "arrae" && !m.read).length;
-  return <StudioHome name={artist.name} studio={studio} unread={unread} bookings={bookings} />;
+  return <StudioHome name={artist.name} studio={studio} unread={unread} bookings={bookings} agreement={agreement ? { id: agreement.id, signed: !!agreement.signedAt } : null} />;
 }

@@ -267,4 +267,28 @@ ALTER TABLE "applicant_signups" ADD CONSTRAINT "applicant_signups_show_id_shows_
 ALTER TABLE "applicant_signups" ADD CONSTRAINT "applicant_signups_artist_id_artists_id_fk" FOREIGN KEY ("artist_id") REFERENCES "public"."artists"("id") ON DELETE set null ON UPDATE no action;
 ALTER TABLE "applicant_signups" ENABLE ROW LEVEL SECURITY;
 INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('9437b06600c5af4c4cd915bb7ce889459686a9f9202793819ecf6a3be47ee39d', 1793641093622);
+
+-- 0007_agreements
+CREATE TABLE "agreements" (
+	"id" text PRIMARY KEY NOT NULL,
+	"artist_id" text NOT NULL,
+	"body" text NOT NULL,
+	"body_hash" text NOT NULL,
+	"sent_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"sent_by" text NOT NULL,
+	"gallery_name" text NOT NULL,
+	"gallery_title" text NOT NULL,
+	"gallery_signature" text,
+	"artist_name" text,
+	"artist_signature" text,
+	"artist_email" text,
+	"artist_ip" text,
+	"artist_user_agent" text,
+	"signed_at" timestamp with time zone,
+	"pdf_path" text,
+	"voided_at" timestamp with time zone
+);
+ALTER TABLE "agreements" ADD CONSTRAINT "agreements_artist_id_artists_id_fk" FOREIGN KEY ("artist_id") REFERENCES "public"."artists"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "agreements" ENABLE ROW LEVEL SECURITY;
+INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('57d8370dd5fcdaa6052c08709857635b4bfa9fc637ea8f15e86662627acb54a3', 1793643264318);
 COMMIT;

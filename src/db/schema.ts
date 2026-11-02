@@ -298,3 +298,29 @@ export type Artist = typeof artists.$inferSelect;
 export type Work = typeof works.$inferSelect;
 export type Show = typeof shows.$inferSelect;
 export type Application = typeof applications.$inferSelect;
+
+/**
+ * A Partnership Agreement sent to one artist and signed in the portal. The text is
+ * frozen when it is sent, so later edits to the template never change a signed copy.
+ */
+export const agreements = pgTable("agreements", {
+  id: text("id").primaryKey(),
+  artistId: text("artist_id")
+    .notNull()
+    .references(() => artists.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  bodyHash: text("body_hash").notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }).defaultNow().notNull(),
+  sentBy: text("sent_by").notNull(),
+  galleryName: text("gallery_name").notNull(),
+  galleryTitle: text("gallery_title").notNull(),
+  gallerySignature: text("gallery_signature"), // PNG data URL, or null for a typed signature
+  artistName: text("artist_name"),
+  artistSignature: text("artist_signature"), // PNG data URL
+  artistEmail: text("artist_email"),
+  artistIp: text("artist_ip"),
+  artistUserAgent: text("artist_user_agent"),
+  signedAt: timestamp("signed_at", { withTimezone: true }),
+  pdfPath: text("pdf_path"),
+  voidedAt: timestamp("voided_at", { withTimezone: true }),
+});

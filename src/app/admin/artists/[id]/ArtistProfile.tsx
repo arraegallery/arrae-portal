@@ -18,6 +18,7 @@ import {
   updateArtist,
   updateWork,
 } from "../../actions";
+import { AgreementPanel, type AgreementSummary } from "../../agreements/AgreementPanel";
 import { PhotoManager } from "@/components/PhotoManager";
 import { Thread } from "@/components/Thread";
 import { ARTIST_ONBOARDING, SHOW_ONBOARDING, readOnboarding, type Onboarding } from "@/lib/onboarding";
@@ -44,7 +45,7 @@ type Change = Profile["changes"][number];
 const ASK_NOTE = "Thank you for applying! Could you send us better photos of this work? Straight on, in good natural light, filling the frame, with no glare or background. A detail shot is welcome too.";
 type ShowOption = Profile["shows"][number];
 
-export function ArtistProfile({ profile, owner }: { profile: Profile; owner: boolean }) {
+export function ArtistProfile({ profile, owner, agreement }: { profile: Profile; owner: boolean; agreement: AgreementSummary }) {
   const a = profile.artist;
   const initial = {
     name: a.name,
@@ -188,6 +189,7 @@ export function ArtistProfile({ profile, owner }: { profile: Profile; owner: boo
                 <Chip key={k} done={!!onboarding[k]} label={label} onClick={() => toggleOnboarding(k, null)} />
               ))}
             </div>
+            {owner && <AgreementPanel artistId={a.id} artistName={a.name} hasEmail={!!a.email} agreement={agreement} />}
             {inShows.length === 0 ? (
               <p className="mt-2 text-xs text-muted">Show checklists appear here once the artist is selected for a show.</p>
             ) : (
