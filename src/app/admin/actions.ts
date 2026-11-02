@@ -8,7 +8,6 @@ import { APPLICATION_STATUSES, WORK_STATUSES, type ApplicationStatus, type WorkS
 import { ensureApplication } from "@/lib/applications";
 import { notifyNewMessage } from "@/lib/notify";
 import { ARTIST_ONBOARDING, SHOW_ONBOARDING, readOnboarding } from "@/lib/onboarding";
-import { fetchStoreCollections, matchCollections } from "@/lib/shopify-bios";
 import { recordWorkChanges, TRACKED_FIELDS } from "@/lib/changes";
 import { attachPhotos, createPhotoSlots, listPhotos, makeMainPhoto, removePhoto, worksByIds, type UploadedPhoto } from "@/lib/photos";
 import { personalize, renderEmail, renderText, sendEmails, type EmailContent } from "@/lib/email";
@@ -412,31 +411,6 @@ export async function sendMessageToArtists(artistIds: string[], message: EmailCo
 // ---- ARRAE bios from the Shopify artist collections ----
 
 /** Copies each artist collection's description into ARRAE bios that are still empty. Never overwrites. */
-export async function fillBiosFromShopify() {
-  const actor = await requireOwner();
-  const collections = await fetchStoreCollections();
-  const artists = await db.select({ id: s.artists.id, name: s.artists.name, arraeBio: s.artists.arraeBio, handle: s.artists.shopifyCollectionHandle }).from(s.artists);
-  const { matches, unmatched } = matchCollections(artists, collections);
-  const filled: string[] = [];
-  const kept: string[] = [];
-  for (const { artist, collection } of matches) {
-    const set: Partial<typeof s.artists.$inferInsert> = {};
-    if (!artist.arraeBio?.trim()) set.arraeBio = collection.bio;
-    if (!artist.handle) set.shopifyCollectionHandle = collection.handle;
-    if (!Object.keys(set).length) {
-      kept.push(artist.name);
-      continue;
-    }
-    await db.update(s.artists).set(set).where(eq(s.artists.id, artist.id));
-    if (set.arraeBio) {
-      filled.push(artist.name);
-      await log({ artistId: artist.id, kind: "edit", body: `ARRAE bio filled from Shopify collection "${collection.title}"`, actor });
-    }
-  }
-  revalidatePath("/admin/artists", "layout");
-  return { filled, kept: kept.length, unmatched: unmatched.map((c) => c.title) };
-}
-
 // ---- Conversations with artists ----
 
 export async function sendMessageToArtist(artistId: string, body: string) {
