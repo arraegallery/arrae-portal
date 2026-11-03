@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireAssistant } from "@/lib/schedule";
+import { callName } from "@/lib/schedule-kinds";
 import { teamRoleFor } from "@/lib/team";
 import { supabaseForRequest } from "@/lib/supabase/server";
 
@@ -43,7 +44,7 @@ export default async function ScheduleLayout({ children }: { children: React.Rea
             )}
           </nav>
           <form action={signOut} className="ml-auto flex items-center gap-3 text-xs text-muted">
-            <span className="hidden sm:inline">{assistant?.name ?? email}</span>
+            <span className="hidden sm:inline">{assistant ? callName(assistant) : email}</span>
             <button className="rounded-md px-2 py-1 ring-1 ring-line hover:bg-white">Sign out</button>
           </form>
         </div>

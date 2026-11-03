@@ -1,6 +1,7 @@
 import { and, asc, gte, lte } from "drizzle-orm";
 import { db, schema as s } from "@/db";
 import { galleryNow, shiftMinutes } from "./schedule";
+import { shiftEnds } from "./schedule-kinds";
 
 /** Semester presets for the hours report. */
 export function semesters(today: string) {
@@ -37,14 +38,14 @@ export async function hoursReport(from: string, to: string): Promise<ReportRow[]
   const loggedShift = new Set(logs.map((l) => l.shiftId).filter(Boolean));
   const rows = people.map((p) => {
     // Only shifts that have already ended count as "scheduled" for the report.
-    const done = shifts.filter((sh) => sh.assistantEmail === p.email && `${sh.date}T${sh.endTime}` <= now.stamp);
+    const done = shifts.filter((sh) => sh.assistantEmail === p.email && shiftEnds(sh) <= now.stamp);
     const mine = logs.filter((l) => l.email === p.email);
     return {
       email: p.email,
       name: p.name,
       removed: !!p.removedAt,
       shifts: done.length,
-      scheduledMinutes: done.reduce((n, sh) => n + shiftMinutes(sh.startTime, sh.endTime), 0),
+      scheduledMinutes: done.reduce((n, sh) => n + (sh.timeTbd && sh.maxHours ? sh.maxHours * 60 : shiftMinutes(sh.startTime, sh.endTime)), 0),
       loggedMinutes: mine.reduce((n, l) => n + l.minutes, 0),
       missing: done.filter((sh) => !loggedShift.has(sh.id)).map((sh) => ({ id: sh.id, date: sh.date, startTime: sh.startTime, endTime: sh.endTime })),
       logs: mine.map((l) => ({ id: l.id, date: l.date, startTime: l.startTime, endTime: l.endTime, minutes: l.minutes, note: l.note, shiftId: l.shiftId })),

@@ -16,7 +16,7 @@ import {
   type ShiftInput,
 } from "./actions";
 
-type Person = { email: string; name: string; phone: string | null; color: string; feed: string };
+type Person = { email: string; name: string; preferredName: string | null; phone: string | null; color: string; feed: string };
 type Confirmation = { email: string; month: string; sent: boolean; confirmed: boolean };
 type Swap = { id: string; status: string; from: string; takenBy: string | null; note: string | null; date: string; startTime: string; endTime: string };
 
@@ -81,7 +81,8 @@ export function ScheduleAdmin({
     const std = STANDARD[dow(date)];
     const startTime = start ?? std?.[0] ?? "12:00";
     const endTime = start ? `${String(Math.min(Number(start.slice(0, 2)) + 4, 23)).padStart(2, "0")}:00` : std?.[1] ?? "18:00";
-    return { date, startTime, endTime, kind: start || !std ? "special" : "standard", title: "", notes: "", assistantEmail: "", repeatWeeks: 0 };
+    const kind = start || !std ? "special" : "standard";
+    return { date, startTime, endTime, kind, title: "", notes: "", assistantEmail: "", repeatWeeks: 0, timeTbd: false, maxHours: null, coordinateWith: "", onCalendar: kind !== "standard" };
   };
   const upcoming = shifts.filter((s) => s.date >= today);
   const openCount = upcoming.filter((s) => !s.assistantEmail).length;
@@ -126,7 +127,20 @@ export function ScheduleAdmin({
         addHint="Add a shift on this day"
         onAdd={(d, start) => setEditing(blank(d, start))}
         onShift={(s) =>
-          setEditing({ id: s.id, date: s.date, startTime: s.startTime, endTime: s.endTime, kind: s.kind, title: s.title ?? "", notes: s.notes ?? "", assistantEmail: s.assistantEmail ?? "" })
+          setEditing({
+            id: s.id,
+            date: s.date,
+            startTime: s.startTime,
+            endTime: s.endTime,
+            kind: s.kind,
+            title: s.title ?? "",
+            notes: s.notes ?? "",
+            assistantEmail: s.assistantEmail ?? "",
+            timeTbd: s.timeTbd,
+            maxHours: s.maxHours,
+            coordinateWith: s.coordinateWith ?? "",
+            onCalendar: s.onCalendar,
+          })
         }
       />
 
@@ -169,7 +183,15 @@ function ShiftForm({ value, people, onClose }: { value: ShiftInput; people: Pers
         </label>
         <label className="text-xs text-muted">
           Type
-          <select value={v.kind} onChange={set("kind")} className={input}>
+          <select
+            value={v.kind}
+            onChange={(e) => {
+              const kind = e.target.value;
+              const tbd = kind === "setup" || kind === "breakdown";
+              setV({ ...v, kind, onCalendar: kind !== "standard", ...(tbd && !v.id ? { timeTbd: true, maxHours: v.maxHours ?? 6 } : {}), ...(kind === "standard" ? { timeTbd: false } : {}) });
+            }}
+            className={input}
+          >
             {SHIFT_KINDS.map((k) => (
               <option key={k.id} value={k.id}>
                 {k.label}
@@ -177,27 +199,54 @@ function ShiftForm({ value, people, onClose }: { value: ShiftInput; people: Pers
             ))}
           </select>
         </label>
-        <label className="text-xs text-muted">
-          Starts
-          <input type="time" value={v.startTime} onChange={set("startTime")} className={input} />
-        </label>
-        <label className="text-xs text-muted">
-          Ends
-          <input type="time" value={v.endTime} onChange={set("endTime")} className={input} />
-        </label>
-        {std && (v.startTime !== std[0] || v.endTime !== std[1]) && (
-          <p className="col-span-2 -mt-1 text-xs text-muted">
-            Gallery hours that day are {clock(std[0])}–{clock(std[1])}.{" "}
-            <button onClick={() => setV({ ...v, startTime: std[0], endTime: std[1] })} className="underline">
-              Use them
-            </button>
-          </p>
+        {v.kind !== "standard" && (
+          <>
+            <label className="col-span-2 text-xs text-muted">
+              Event name
+              <input value={v.title} onChange={set("title")} placeholder={v.kind === "breakdown" ? "Biscayne Collective break down" : "Volume IV set up"} className={input} />
+            </label>
+            <label className="col-span-2 flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={!!v.timeTbd} onChange={(e) => setV({ ...v, timeTbd: e.target.checked, maxHours: v.maxHours ?? 6 })} />
+              Hours TBD: they&rsquo;ll work out the times with someone
+            </label>
+          </>
+        )}
+        {v.timeTbd && v.kind !== "standard" ? (
+          <label className="text-xs text-muted">
+            Not more than (hours)
+            <input type="number" min={1} max={16} step={0.5} value={v.maxHours ?? ""} onChange={(e) => setV({ ...v, maxHours: e.target.value ? Number(e.target.value) : null })} className={input} />
+          </label>
+        ) : (
+          <>
+            <label className="text-xs text-muted">
+              Starts
+              <input type="time" value={v.startTime} onChange={set("startTime")} className={input} />
+            </label>
+            <label className="text-xs text-muted">
+              Ends
+              <input type="time" value={v.endTime} onChange={set("endTime")} className={input} />
+            </label>
+            {std && (v.startTime !== std[0] || v.endTime !== std[1]) && (
+              <p className="col-span-2 -mt-1 text-xs text-muted">
+                Gallery hours that day are {clock(std[0])}–{clock(std[1])}.{" "}
+                <button onClick={() => setV({ ...v, startTime: std[0], endTime: std[1] })} className="underline">
+                  Use them
+                </button>
+              </p>
+            )}
+          </>
         )}
         {v.kind !== "standard" && (
-          <label className="col-span-2 text-xs text-muted">
-            Event name (optional)
-            <input value={v.title} onChange={set("title")} placeholder="Volume IV opening" className={input} />
-          </label>
+          <>
+            <label className={`${v.timeTbd ? "" : "col-span-2"} text-xs text-muted`}>
+              Coordinate with (to finalize the day and hours)
+              <input value={v.coordinateWith ?? ""} onChange={set("coordinateWith")} placeholder="e.g. Lauren, or the artists" className={input} />
+            </label>
+            <label className="col-span-2 flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={!!v.onCalendar} onChange={(e) => setV({ ...v, onCalendar: e.target.checked })} />
+              Show it on the gallery calendar too
+            </label>
+          </>
         )}
         <label className="col-span-2 text-xs text-muted">
           Notes for the assistant (optional)
@@ -322,6 +371,7 @@ function Roster({ people, months, confirmations }: { people: Person[]; months: s
                 <td className="px-3 py-2">
                   <span className={`mr-2 inline-block h-2.5 w-2.5 rounded-full ${personColor(p.color).dot}`} />
                   {p.name}
+                  {p.preferredName && <span className="text-muted"> ({p.preferredName})</span>}
                   <span className="block pl-[18px] text-xs text-muted">{p.email}</span>
                 </td>
                 {months.map((m) => (
@@ -358,14 +408,18 @@ function Roster({ people, months, confirmations }: { people: Person[]; months: s
 }
 
 function PersonForm({ person, onClose }: { person: Person; onClose: () => void }) {
-  const [v, setV] = useState({ name: person.name, phone: person.phone ?? "", color: person.color });
+  const [v, setV] = useState({ name: person.name, preferredName: person.preferredName ?? "", phone: person.phone ?? "", color: person.color });
   const { pending, msg, run } = useRun();
   return (
     <Modal title={person.name} onClose={onClose}>
       <div className="grid gap-3">
         <label className="text-xs text-muted">
-          Name
+          Full name (used on the hours report)
           <input value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} className={input} />
+        </label>
+        <label className="text-xs text-muted">
+          Preferred name (what the team calls them, shown on the schedule and in emails)
+          <input value={v.preferredName} onChange={(e) => setV({ ...v, preferredName: e.target.value })} placeholder={person.name.split(/\s+/)[0]} className={input} />
         </label>
         <label className="text-xs text-muted">
           Phone

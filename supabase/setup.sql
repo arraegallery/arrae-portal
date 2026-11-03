@@ -433,4 +433,15 @@ FROM "assistants" a
 WHERE a."removed_at" IS NULL
 ON CONFLICT ("email") DO UPDATE SET "revoked_at" = NULL, "name" = COALESCE("team_members"."name", EXCLUDED."name");
 INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('e3f7cb17e803a3ea285ad3bde4c0693c28f527290641a820943d708c0e171a0d', 1793728186571);
+
+-- 0014_shift_tbd_preferred_name
+ALTER TABLE "assistants" ADD COLUMN "preferred_name" text;
+ALTER TABLE "shifts" ADD COLUMN "time_tbd" boolean DEFAULT false NOT NULL;
+ALTER TABLE "shifts" ADD COLUMN "max_hours" real;
+ALTER TABLE "shifts" ADD COLUMN "coordinate_with" text;
+ALTER TABLE "shifts" ADD COLUMN "event_id" text;
+ALTER TABLE "shifts" ADD CONSTRAINT "shifts_event_id_gallery_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."gallery_events"("id") ON DELETE set null ON UPDATE no action;
+UPDATE "shifts" SET "kind" = 'breakdown' WHERE "kind" = 'install' AND ("title" ILIKE '%break%down%' OR "title" ILIKE '%deinstall%');
+UPDATE "shifts" SET "kind" = 'setup' WHERE "kind" = 'install' AND "title" ILIKE '%set%up%';
+INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('ae9060c948e4953a86fcbd932705b3cd462d955df80a738a7ea57c22b66d8256', 1793731363728);
 COMMIT;

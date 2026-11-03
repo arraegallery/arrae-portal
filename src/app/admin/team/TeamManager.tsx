@@ -14,6 +14,7 @@ export function TeamManager({ owners, members, configured }: { owners: string[];
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [preferred, setPreferred] = useState("");
   const [welcome, setWelcome] = useState(true);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
@@ -57,8 +58,12 @@ export function TeamManager({ owners, members, configured }: { owners: string[];
             <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="intern@arraegallery.com" className={input} />
           </label>
           <label className="min-w-40 flex-1 text-xs text-muted">
-            Name
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Sam" className={input} />
+            Full name
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Samantha Ruiz" className={input} />
+          </label>
+          <label className="min-w-32 flex-1 text-xs text-muted">
+            Preferred name (optional)
+            <input value={preferred} onChange={(e) => setPreferred(e.target.value)} placeholder="Sam" className={input} />
           </label>
           <label className="flex items-center gap-2 pb-2 text-sm">
             <input type="checkbox" checked={welcome && configured} disabled={!configured} onChange={(e) => setWelcome(e.target.checked)} />
@@ -68,9 +73,10 @@ export function TeamManager({ owners, members, configured }: { owners: string[];
             disabled={pending || !email.trim()}
             onClick={() =>
               run(async () => {
-                const r = await addTeamMember({ email, name, welcome: welcome && configured });
+                const r = await addTeamMember({ email, name, preferredName: preferred, welcome: welcome && configured });
                 setEmail("");
                 setName("");
+                setPreferred("");
                 return r.emailed ? "Added, and a welcome email is on its way." : "Added. They can sign in at arrae-portal.vercel.app with that email.";
               })
             }

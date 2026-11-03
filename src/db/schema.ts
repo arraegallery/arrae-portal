@@ -375,6 +375,7 @@ export const galleryEvents = pgTable("gallery_events", {
 export const assistants = pgTable("assistants", {
   email: text("email").primaryKey(),
   name: text("name").notNull(),
+  preferredName: text("preferred_name"), // what the team calls them, e.g. "Ming"
   phone: text("phone"),
   color: text("color").notNull().default("violet"),
   calendarToken: text("calendar_token").notNull(), // private .ics feed of their own shifts
@@ -389,8 +390,13 @@ export const shifts = pgTable("shifts", {
   date: date("date").notNull(),
   startTime: text("start_time").notNull(), // HH:MM
   endTime: text("end_time").notNull(),
-  kind: text("kind").notNull().default("standard"), // standard | opening | special | install | other
+  kind: text("kind").notNull().default("standard"), // standard | opening | special | setup | breakdown | install | other
   title: text("title"),
+  /** Hours not fixed yet: the assistant works them out with `coordinateWith`. start/end are a placeholder. */
+  timeTbd: boolean("time_tbd").notNull().default(false),
+  maxHours: real("max_hours"),
+  coordinateWith: text("coordinate_with"),
+  eventId: text("event_id").references(() => galleryEvents.id, { onDelete: "set null" }),
   assistantEmail: text("assistant_email").references(() => assistants.email, { onDelete: "set null" }),
   notes: text("notes"),
   hoursReminderAt: timestamp("hours_reminder_at", { withTimezone: true }),

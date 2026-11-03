@@ -3,6 +3,7 @@ import { db, schema as s } from "@/db";
 import { portalUrl } from "@/lib/notify";
 import { addDays, canStillSwap, galleryNow, nextMonth, requireAssistant, swapCutoffHours } from "@/lib/schedule";
 import { calendarEvents, calendarShifts } from "@/lib/schedule-data";
+import { callName, shiftEnds } from "@/lib/schedule-kinds";
 import { MySchedule } from "./MySchedule";
 
 export const metadata = { title: "My schedule · ARRAE" };
@@ -29,7 +30,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
     .filter((m) => m === thisMonth || sp.confirm === m || rows.some((c) => c.month === m && c.sentAt));
 
   // Ended shifts without hours, from the last 45 days.
-  const recent = mine.filter((sh) => sh.date >= addDays(today, -45) && `${sh.date}T${sh.endTime}` <= now.stamp);
+  const recent = mine.filter((sh) => sh.date >= addDays(today, -45) && shiftEnds(sh) <= now.stamp);
   const logged = recent.length
     ? new Set(
         (await db.select({ id: s.hourLogs.shiftId }).from(s.hourLogs).where(and(eq(s.hourLogs.email, email), inArray(s.hourLogs.shiftId, recent.map((r) => r.id))))).map((r) => r.id),
@@ -44,7 +45,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
     .where(and(eq(s.shiftSwaps.status, "open"), gte(s.shifts.date, today)));
   const swapByShift = new Map(swaps.map((r) => [r.sw.shiftId, { id: r.sw.id, from: r.sw.fromEmail, note: r.sw.note }]));
   const upcoming = mine
-    .filter((sh) => `${sh.date}T${sh.endTime}` > now.stamp)
+    .filter((sh) => shiftEnds(sh) > now.stamp)
     .map((sh) => ({ ...sh, swapId: swapByShift.get(sh.id)?.id ?? null, canSwap: canStillSwap(sh, cutoff) }));
   const offers = shifts
     .filter((sh) => swapByShift.has(sh.id) && sh.assistantEmail !== email && `${sh.date}T${sh.startTime}` > now.stamp)
@@ -54,7 +55,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
     <MySchedule
       today={today}
       email={email}
-      name={assistant?.name ?? null}
+      name={assistant ? callName(assistant) : null}
       cutoff={cutoff}
       feed={assistant ? portalUrl(`/api/schedule/${assistant.calendarToken}.ics`) : null}
       shifts={shifts}

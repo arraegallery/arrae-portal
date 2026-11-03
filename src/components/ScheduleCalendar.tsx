@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { EVENT_CHIP, OPEN_CHIP, SHIFT_KINDS, personColor } from "@/lib/schedule-kinds";
+import { EVENT_CHIP, OPEN_CHIP, SHIFT_KINDS, personColor, shiftTime } from "@/lib/schedule-kinds";
 
 export type CalShift = {
   id: string;
@@ -15,6 +15,10 @@ export type CalShift = {
   assistantName: string | null;
   color: string | null;
   swapOpen: boolean;
+  timeTbd: boolean;
+  maxHours: number | null;
+  coordinateWith: string | null;
+  onCalendar: boolean;
 };
 export type CalEvent = { id: string; title: string; start: string; end: string; startTime: string | null; endTime: string | null };
 
@@ -170,10 +174,10 @@ export function ScheduleCalendar({
                           e.stopPropagation();
                           onShift(s);
                         }}
-                        title={`${s.assistantName ?? "Open shift"} · ${clock(s.startTime)}–${clock(s.endTime)}${s.title ? ` · ${s.title}` : ""}`}
+                        title={`${s.assistantName ?? "Open shift"} · ${shiftTime(s)}${s.title ? ` · ${s.title}` : ""}${s.coordinateWith ? ` · coordinate with ${s.coordinateWith}` : ""}`}
                         className={`block w-full truncate rounded px-1 py-0.5 text-left text-[11px] ring-1 ${shiftChip(s)} ${mine && s.assistantEmail === mine ? "font-semibold ring-2" : ""}`}
                       >
-                        <span className="hidden sm:inline">{clock(s.startTime)} </span>
+                        <span className="hidden sm:inline">{s.timeTbd ? "TBD" : clock(s.startTime)} </span>
                         {firstName(s.assistantName)}
                         {s.swapOpen && " ⇄"}
                         {s.kind !== "standard" && <span className="ml-1 opacity-70">★</span>}
@@ -270,16 +274,14 @@ function WeekGrid({
                     <button
                       key={s.id}
                       onClick={() => onShift(s)}
-                      className={`absolute flex flex-col justify-start overflow-hidden rounded px-1.5 py-1 text-left text-[11px] leading-tight ring-1 ${shiftChip(s)} ${mine && s.assistantEmail === mine ? "ring-2" : ""}`}
+                      className={`absolute flex flex-col justify-start overflow-hidden rounded px-1.5 py-1 text-left text-[11px] leading-tight ring-1 ${shiftChip(s)} ${mine && s.assistantEmail === mine ? "ring-2" : ""} ${s.timeTbd ? "border border-dashed border-ink/40" : ""}`}
                       style={{ top: top + 1, height, left: `calc(${(lane / of) * 100}% + 2px)`, width: `calc(${100 / of}% - 4px)` }}
                     >
                       <span className="block truncate font-medium">
                         {s.assistantName ?? "Open shift"}
                         {s.swapOpen && " ⇄"}
                       </span>
-                      <span className="block truncate opacity-80">
-                        {clock(s.startTime)}–{clock(s.endTime)}
-                      </span>
+                      <span className="block truncate opacity-80">{shiftTime(s)}</span>
                       {s.kind !== "standard" && <span className="block truncate opacity-80">★ {s.title || SHIFT_KINDS.find((k) => k.id === s.kind)?.label}</span>}
                     </button>
                   );
