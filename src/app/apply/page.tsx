@@ -36,7 +36,7 @@ export default async function ApplyPage({ searchParams }: { searchParams: Promis
           <span className="font-medium text-ink">1. Your email.</span> We&rsquo;ll send you a link to start.
         </li>
         <li>
-          <span className="font-medium text-ink">2. Our terms.</span> Read how we work with artists and agree.
+          <span className="font-medium text-ink">2. How we work.</span> A quick read on how we work with artists. Nothing to sign yet.
         </li>
         <li>
           <span className="font-medium text-ink">3. Your application.</span> Your details and up to 3 works with photos.

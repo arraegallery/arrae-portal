@@ -65,7 +65,7 @@ export async function agreeToTerms(formData: FormData) {
 async function agreed() {
   const me = await mySignup();
   const terms = await getTerms();
-  if (!me.signup.termsAgreedAt || me.signup.termsVersion !== terms.version) throw new Error("Please read and agree to the terms first");
+  if (!me.signup.termsAgreedAt || me.signup.termsVersion !== terms.version) throw new Error("Please read how we work with artists first");
   return me;
 }
 
