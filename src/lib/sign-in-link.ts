@@ -25,7 +25,10 @@ export async function sendSignInLink(email: string, origin: string, opts: { crea
   }
   const { data, error } = await admin.auth.admin.generateLink({ type: "magiclink", email });
   if (error || !data.properties?.hashed_token) throw error ?? new Error("Couldn't create a sign-in link");
-  const url = `${origin}/auth/confirm?token_hash=${encodeURIComponent(data.properties.hashed_token)}&type=magiclink`;
+  // Someone signing in for the first time (an artist imported without an account yet) gets
+  // a "signup" token rather than a "magiclink" one, and it only verifies with its own type.
+  const type = data.properties.verification_type || "magiclink";
+  const url = `${origin}/auth/confirm?token_hash=${encodeURIComponent(data.properties.hashed_token)}&type=${encodeURIComponent(type)}`;
   const apply = opts.purpose === "apply";
   const content = {
     subject: apply ? "Continue your ARRAE application" : "Your ARRAE sign-in link",
