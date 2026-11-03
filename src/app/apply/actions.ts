@@ -12,6 +12,7 @@ import { arraeRecipients, notifyEmail, portalUrl } from "@/lib/notify";
 import { createPhotoSlots } from "@/lib/photos";
 import { supabaseAdmin, supabaseConfigured, supabaseForRequest } from "@/lib/supabase/server";
 import { getTerms } from "@/lib/terms";
+import { sendSignInLink } from "@/lib/sign-in-link";
 
 const rand = () => crypto.randomUUID().replace(/-/g, "").slice(0, 14);
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -30,9 +31,14 @@ export async function startApplication(formData: FormData) {
   if (!recent) {
     const h = await headers();
     const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
-    const supabase = await supabaseForRequest();
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: `${origin}/auth/callback`, shouldCreateUser: true } });
-    if (error) redirect(`/apply?error=send`);
+    let failed = false;
+    try {
+      await sendSignInLink(email, origin, { createUser: true, purpose: "apply" });
+    } catch (e) {
+      console.error("apply sign-in link failed", e);
+      failed = true;
+    }
+    if (failed) redirect(`/apply?error=send`);
   }
   redirect(`/apply?sent=1`);
 }
