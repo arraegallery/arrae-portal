@@ -2,13 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { addTeamMember, setTeamAccess } from "./actions";
+import { addTeamMember, sendWelcome, setTeamAccess } from "./actions";
 
-type Member = { email: string; name: string | null; addedBy: string | null; since: string; revoked: boolean };
+type Member = { email: string; name: string | null; addedBy: string | null; since: string; revoked: boolean; lastSeen: string | null };
+const seenFmt = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const input = "mt-0.5 w-full rounded-md bg-white px-2 py-1.5 text-sm text-ink ring-1 ring-line";
 
-const CAN = ["Artists: profiles, details, photos, onboarding, notes", "Inbox: read and answer artist messages", "Logistics: drop-off and pick-up times, marking works received", "Schedule: their shifts and the team's, swaps, hours and calendar sync"];
-const CANNOT = ["Review boards and decisions", "Sandbox", "Waitlist", "Email artists (mass email)", "Shows, Shopify and Team settings"];
+const CAN = ["Artists: roster profiles to view (no editing), notes, asking for better photos", "Inbox: read and answer artist messages", "Logistics: drop-off and pick-up times, marking works received", "Schedule: their shifts and the team's, swaps, hours and calendar sync"];
+const CANNOT = ["Review boards and decisions", "Sandbox", "Waitlist", "Email artists (mass email)", "Editing artist details, works, photos or onboarding", "Shows, Shopify and Team settings"];
 
 export function TeamManager({ owners, members, configured }: { owners: string[]; members: Member[]; configured: boolean }) {
   const router = useRouter();
@@ -104,10 +105,22 @@ export function TeamManager({ owners, members, configured }: { owners: string[];
               <span className="font-medium">{m.name ?? m.email}</span>
               {m.name && <span className="text-muted">{m.email}</span>}
               <span className="rounded-full bg-paper px-2 py-0.5 text-[11px] ring-1 ring-line">Team</span>
+              <span className={`text-xs ${m.lastSeen ? "text-emerald-800" : "text-amber-800"}`} suppressHydrationWarning>
+                {m.lastSeen ? `Last signed in ${seenFmt.format(new Date(m.lastSeen))}` : "Hasn't signed in yet"}
+              </span>
+              {configured && (
+                <button
+                  disabled={pending}
+                  onClick={() => run(async () => ((await sendWelcome(m.email)) ? `Welcome email sent to ${m.name ?? m.email}.` : "The email didn't go out. Try again in a minute."))}
+                  className="ml-auto rounded-md px-3 py-1 text-xs ring-1 ring-line hover:bg-paper"
+                >
+                  {m.lastSeen ? "Resend sign-in email" : "Send welcome email"}
+                </button>
+              )}
               <button
                 disabled={pending}
                 onClick={() => confirm(`Remove ${m.name ?? m.email}'s access? They'll be signed out of the portal right away.`) && run(() => setTeamAccess(m.email, false))}
-                className="ml-auto rounded-md px-3 py-1 text-xs text-rose-700 ring-1 ring-rose-200 hover:bg-rose-50"
+                className={`${configured ? "" : "ml-auto "}rounded-md px-3 py-1 text-xs text-rose-700 ring-1 ring-rose-200 hover:bg-rose-50`}
               >
                 Remove access
               </button>

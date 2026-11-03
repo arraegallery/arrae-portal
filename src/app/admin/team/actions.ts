@@ -19,17 +19,29 @@ export async function addTeamMember(input: { email: string; name: string; prefer
     .values({ email, name, role: "staff", addedBy: actor })
     .onConflictDoUpdate({ target: s.teamMembers.email, set: { name, revokedAt: null, addedBy: actor } });
   await putOnSchedule(email, name, input.preferredName);
-  let emailed = false;
-  if (input.welcome)
-    emailed = await notifyEmail([email], {
-      subject: "You've been added to the ARRAE team portal",
-      heading: "Welcome to the ARRAE portal",
-      body: `Hi ${input.preferredName?.trim() || name?.split(/\s+/)[0] || "there"},\n\nYou now have team access to the ARRAE portal, where we keep artist messages, drop-offs and pick-ups, and your gallery shifts in one place. You can see your schedule and the team's, swap shifts, log your hours and add your shifts to your phone's calendar.\n\nSign in with this email address and we'll send you a link.`,
-      buttonLabel: "Sign in",
-      buttonUrl: portalUrl("/login"),
-    });
+  const emailed = input.welcome ? await welcomeEmail(email, input.preferredName?.trim() || name?.split(/\s+/)[0]) : false;
   revalidatePath("/admin/team");
   return { emailed };
+}
+
+function welcomeEmail(email: string, first: string | null | undefined) {
+  return notifyEmail([email], {
+    subject: "You've been added to the ARRAE team portal",
+    heading: "Welcome to the ARRAE portal",
+    body: `Hi ${first || "there"},\n\nYou now have team access to the ARRAE portal, where we keep artist messages, drop-offs and pick-ups, and your gallery shifts in one place. You can see your schedule and the team's, swap shifts, log your hours and add your shifts to your phone's calendar.\n\nSign in with this email address and we'll send you a link.`,
+    buttonLabel: "Sign in",
+    buttonUrl: portalUrl("/login"),
+  });
+}
+
+/** Sends (or re-sends) the welcome note with the sign-in button to someone already on the team. */
+export async function sendWelcome(email: string) {
+  await requireOwner();
+  const e = email.trim().toLowerCase();
+  const [m] = await db.select().from(s.teamMembers).where(eq(s.teamMembers.email, e));
+  if (!m || m.revokedAt) throw new Error("They're not on the team");
+  const [a] = await db.select({ preferredName: s.assistants.preferredName }).from(s.assistants).where(eq(s.assistants.email, e));
+  return welcomeEmail(e, a?.preferredName?.trim() || m.name?.split(/\s+/)[0]);
 }
 
 export async function setTeamAccess(email: string, active: boolean) {
