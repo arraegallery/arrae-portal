@@ -271,7 +271,7 @@ export async function updateArtist(
     onboarding?: Record<string, unknown>;
   },
 ) {
-  const actor = (await requireTeam()).email;
+  const actor = await requireOwner();
   const set: Partial<typeof s.artists.$inferInsert> = {};
   if (fields.name !== undefined) {
     const n = clean(fields.name, 200);
@@ -290,7 +290,7 @@ export async function updateArtist(
 
 /** Tick or untick one onboarding step, for the artist overall (showId null) or for one show. */
 export async function setOnboardingStep(artistId: string, key: string, showId: string | null, done: boolean) {
-  const actor = (await requireTeam()).email;
+  const actor = await requireOwner();
   const allowed = showId ? SHOW_ONBOARDING.map(([k]) => k as string) : ARTIST_ONBOARDING.map(([k]) => k as string);
   if (!allowed.includes(key)) throw new Error("Unknown onboarding step");
   const [a] = await db.select({ onboarding: s.artists.onboarding }).from(s.artists).where(eq(s.artists.id, artistId));
@@ -322,7 +322,7 @@ export async function updateWork(
   workId: string,
   fields: { title?: string; year?: string; medium?: string; category?: string; description?: string; price?: string; width?: string; height?: string; depth?: string; unit?: string; sold?: string },
 ) {
-  const actor = (await requireTeam()).email;
+  const actor = await requireOwner();
   const num = (v?: string) => {
     if (v === undefined) return undefined;
     const t = v.trim();
@@ -479,17 +479,17 @@ export async function updateShow(showId: string, fields: ShowFields) {
   revalidatePath("/studio", "layout");
 }
 
-/* Photos: anyone on the team can fix a work's photos or ask the artist for better ones. */
+/* Photos: owners change a work's photos; anyone on the team can see them or ask the artist for better ones. */
 
-async function teamWork(workId: string) {
-  const actor = (await requireTeam()).email;
+async function teamWork(workId: string, ownerOnly = true) {
+  const actor = ownerOnly ? await requireOwner() : (await requireTeam()).email;
   const [work] = await db.select().from(s.works).where(eq(s.works.id, workId));
   if (!work) throw new Error("That work no longer exists");
   return { actor, work };
 }
 
 export async function getWorkPhotos(workId: string) {
-  await teamWork(workId);
+  await teamWork(workId, false);
   return listPhotos(workId);
 }
 
@@ -548,7 +548,7 @@ export async function requestBetterPhotos(workIds: string[], note: string) {
 }
 
 export async function clearPhotoRequest(workId: string) {
-  const { work } = await teamWork(workId);
+  const { work } = await teamWork(workId, false);
   await db.update(s.works).set({ photosRequestedAt: null, photosRequestNote: null }).where(eq(s.works.id, workId));
   revalidateWorkPages(work.artistId);
 }

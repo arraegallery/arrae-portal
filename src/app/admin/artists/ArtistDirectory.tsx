@@ -23,10 +23,10 @@ export function ArtistDirectory({ artists, owner }: { artists: Row[]; owner: boo
       <section className="flex flex-wrap items-end justify-between gap-4 py-6">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted">Private to ARRAE</p>
-          <h1 className="font-display text-4xl">Artists</h1>
+          <h1 className="font-display text-4xl">{owner ? "Artists" : "Roster artists"}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          {(
+          {owner && (
             [
               ["all", "Everyone"],
               ["roster", "Ever selected"],
@@ -54,7 +54,7 @@ export function ArtistDirectory({ artists, owner }: { artists: Row[]; owner: boo
               <span className="w-60 shrink-0 text-right text-xs text-muted" title="Last time this artist signed in to the portal" suppressHydrationWarning>
                 {a.lastSeen ? `Last signed in ${seenFmt.format(new Date(a.lastSeen))}` : "Never signed in"}
               </span>
-              {a.everSelected && !a.hasArraeBio && <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800 ring-1 ring-amber-200">Needs ARRAE bio</span>}
+              {owner && a.everSelected && !a.hasArraeBio && <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800 ring-1 ring-amber-200">Needs ARRAE bio</span>}
             </Link>
           </li>
         ))}
