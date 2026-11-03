@@ -349,4 +349,70 @@ CREATE TABLE "gallery_events" (
 ALTER TABLE "gallery_events" ADD CONSTRAINT "gallery_events_show_id_shows_id_fk" FOREIGN KEY ("show_id") REFERENCES "public"."shows"("id") ON DELETE set null ON UPDATE no action;
 ALTER TABLE "gallery_events" ENABLE ROW LEVEL SECURITY;
 INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('9eb71ab389245ec843428d123f798132ce2919857da0602f310bd41b9f46d5ca', 1793658595177);
+
+-- 0012_gallery_schedule
+CREATE TABLE "assistants" (
+	"email" text PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"phone" text,
+	"color" text DEFAULT 'violet' NOT NULL,
+	"calendar_token" text NOT NULL,
+	"added_by" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"removed_at" timestamp with time zone
+);
+CREATE TABLE "hour_logs" (
+	"id" text PRIMARY KEY NOT NULL,
+	"shift_id" text,
+	"email" text NOT NULL,
+	"date" date NOT NULL,
+	"start_time" text NOT NULL,
+	"end_time" text NOT NULL,
+	"minutes" integer NOT NULL,
+	"note" text,
+	"logged_by" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+CREATE TABLE "schedule_confirmations" (
+	"email" text NOT NULL,
+	"month" text NOT NULL,
+	"sent_at" timestamp with time zone,
+	"confirmed_at" timestamp with time zone,
+	CONSTRAINT "schedule_confirmations_email_month_pk" PRIMARY KEY("email","month")
+);
+CREATE TABLE "shift_swaps" (
+	"id" text PRIMARY KEY NOT NULL,
+	"shift_id" text NOT NULL,
+	"from_email" text NOT NULL,
+	"note" text,
+	"status" text DEFAULT 'open' NOT NULL,
+	"taken_by" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"resolved_at" timestamp with time zone
+);
+CREATE TABLE "shifts" (
+	"id" text PRIMARY KEY NOT NULL,
+	"date" date NOT NULL,
+	"start_time" text NOT NULL,
+	"end_time" text NOT NULL,
+	"kind" text DEFAULT 'standard' NOT NULL,
+	"title" text,
+	"assistant_email" text,
+	"notes" text,
+	"hours_reminder_at" timestamp with time zone,
+	"created_by" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+ALTER TABLE "hour_logs" ADD CONSTRAINT "hour_logs_shift_id_shifts_id_fk" FOREIGN KEY ("shift_id") REFERENCES "public"."shifts"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "shift_swaps" ADD CONSTRAINT "shift_swaps_shift_id_shifts_id_fk" FOREIGN KEY ("shift_id") REFERENCES "public"."shifts"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "shifts" ADD CONSTRAINT "shifts_assistant_email_assistants_email_fk" FOREIGN KEY ("assistant_email") REFERENCES "public"."assistants"("email") ON DELETE set null ON UPDATE no action;
+CREATE INDEX "shifts_date_idx" ON "shifts" ("date");
+CREATE INDEX "hour_logs_email_date_idx" ON "hour_logs" ("email","date");
+ALTER TABLE "assistants" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "shifts" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "shift_swaps" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "hour_logs" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "schedule_confirmations" ENABLE ROW LEVEL SECURITY;
+INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('b8c6bb8b3ee4d32ef4a51704ecb9d8b0668f410a1b7d2b331431498834046574', 1793726933542);
 COMMIT;

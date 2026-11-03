@@ -367,3 +367,74 @@ export const galleryEvents = pgTable("gallery_events", {
   createdBy: text("created_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+/**
+ * Gallery Assistants: the people who staff the gallery. Separate from the portal team
+ * (team_members), because an assistant only ever sees the schedule, never artist data.
+ */
+export const assistants = pgTable("assistants", {
+  email: text("email").primaryKey(),
+  name: text("name").notNull(),
+  phone: text("phone"),
+  color: text("color").notNull().default("violet"),
+  calendarToken: text("calendar_token").notNull(), // private .ics feed of their own shifts
+  addedBy: text("added_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+});
+
+/** One person's shift. assistant_email null = an open shift nobody has yet. Times are gallery time (Miami). */
+export const shifts = pgTable("shifts", {
+  id: text("id").primaryKey(),
+  date: date("date").notNull(),
+  startTime: text("start_time").notNull(), // HH:MM
+  endTime: text("end_time").notNull(),
+  kind: text("kind").notNull().default("standard"), // standard | opening | special | install | other
+  title: text("title"),
+  assistantEmail: text("assistant_email").references(() => assistants.email, { onDelete: "set null" }),
+  notes: text("notes"),
+  hoursReminderAt: timestamp("hours_reminder_at", { withTimezone: true }),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** A request to hand a shift to someone else. The first teammate to accept takes it. */
+export const shiftSwaps = pgTable("shift_swaps", {
+  id: text("id").primaryKey(),
+  shiftId: text("shift_id")
+    .notNull()
+    .references(() => shifts.id, { onDelete: "cascade" }),
+  fromEmail: text("from_email").notNull(),
+  note: text("note"),
+  status: text("status").notNull().default("open"), // open | taken | cancelled
+  takenBy: text("taken_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+});
+
+/** Hours actually worked, logged by the assistant after a shift (or added by an owner). */
+export const hourLogs = pgTable("hour_logs", {
+  id: text("id").primaryKey(),
+  shiftId: text("shift_id").references(() => shifts.id, { onDelete: "set null" }),
+  email: text("email").notNull(),
+  date: date("date").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  minutes: integer("minutes").notNull(),
+  note: text("note"),
+  loggedBy: text("logged_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** The monthly "here is your schedule, please confirm" email, one row per person per month. */
+export const scheduleConfirmations = pgTable(
+  "schedule_confirmations",
+  {
+    email: text("email").notNull(),
+    month: text("month").notNull(), // YYYY-MM
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+  },
+  (t) => [primaryKey({ columns: [t.email, t.month] })],
+);
