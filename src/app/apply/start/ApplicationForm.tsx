@@ -1,12 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { BIO_MAX, BIO_MIN, CATEGORIES, MAX_WORKS, PRICE_MAX, PRICE_MIN } from "@/lib/application-fields";
 import { shrink, uploadPhotos } from "@/lib/photo-upload";
 import { Prose } from "@/components/Prose";
-import { prepareApplicationUploads, submitApplication } from "../actions";
+import { prepareApplicationUploads, saveApplicationDraft, submitApplication } from "../actions";
 
 type Show = { id: string; name: string; description: string | null; deadline: string | null };
 type WorkDraft = { title: string; year: string; height: string; width: string; depth: string; unit: string; category: string; medium: string; description: string; price: string; processVideo: string; files: File[] };
@@ -16,13 +16,46 @@ const label = "block text-sm font-medium";
 const hint = "mt-0.5 block text-xs font-normal text-muted";
 const blankWork = (): WorkDraft => ({ title: "", year: "", height: "", width: "", depth: "", unit: "in", category: "", medium: "", description: "", price: "", processVideo: "", files: [] });
 
-export function ApplicationForm({ shows, prefill }: { shows: Show[]; prefill: { name: string; phone: string; bio: string; social: string; website: string; education: string } }) {
+type Prefill = { name: string; phone: string; bio: string; social: string; website: string; education: string };
+type SavedDraft = { showId?: string; f?: Partial<Prefill>; works?: Partial<Omit<WorkDraft, "files">>[] };
+const str = (v: unknown) => (typeof v === "string" ? v : "");
+
+export function ApplicationForm({ shows, prefill, draft }: { shows: Show[]; prefill: Prefill; draft: Record<string, unknown> | null }) {
   const router = useRouter();
-  const [showId, setShowId] = useState(shows.length === 1 ? shows[0].id : "");
-  const [f, setF] = useState(prefill);
+  const saved = (draft ?? {}) as SavedDraft;
+  const restored = !!draft && (Object.values(saved.f ?? {}).some((v) => str(v).trim()) || (saved.works ?? []).some((w) => str(w.title).trim()));
+  const [showId, setShowId] = useState(saved.showId && shows.some((x) => x.id === saved.showId) ? saved.showId : shows.length === 1 ? shows[0].id : "");
+  const [f, setF] = useState<Prefill>(() => {
+    const out = { ...prefill };
+    for (const k of Object.keys(out) as (keyof Prefill)[]) if (str(saved.f?.[k]).trim()) out[k] = str(saved.f?.[k]);
+    return out;
+  });
   const [photo, setPhoto] = useState<File | null>(null);
   const [cv, setCv] = useState<File | null>(null);
-  const [works, setWorks] = useState<WorkDraft[]>([blankWork()]);
+  const [works, setWorks] = useState<WorkDraft[]>(() => {
+    const list = (saved.works ?? []).slice(0, MAX_WORKS).map((w) => {
+      const b = blankWork();
+      for (const k of Object.keys(b) as (keyof WorkDraft)[]) if (k !== "files" && typeof w[k as keyof typeof w] === "string") (b as Record<string, unknown>)[k] = w[k as keyof typeof w];
+      return b;
+    });
+    return list.length ? list : [blankWork()];
+  });
+  // Save the typed answers a moment after each change, so they can leave and come back.
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const first = useRef(true);
+  const textOnly = JSON.stringify({ showId, f, works: works.map(({ files: _files, ...rest }) => rest) });
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    const t = setTimeout(() => {
+      saveApplicationDraft(JSON.parse(textOnly))
+        .then(() => setSavedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })))
+        .catch(() => {});
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [textOnly]);
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -94,6 +127,11 @@ export function ApplicationForm({ shows, prefill }: { shows: Show[]; prefill: { 
 
   return (
     <div className="mt-6 space-y-8">
+      <p className="rounded-md bg-paper px-3 py-2 text-xs text-muted ring-1 ring-line">
+        {restored ? "Welcome back. We kept the answers you typed last time. " : ""}
+        Your answers save as you type, so you can leave and finish later by signing in with the same email. Photos and files aren&rsquo;t kept until you submit, so add them when you&rsquo;re ready to send.
+        {savedAt && <span className="ml-1 text-emerald-800">Saved {savedAt}.</span>}
+      </p>
       <section className="rounded-lg bg-white p-5 ring-1 ring-line">
         <label className={label}>
           Which show are you applying to?

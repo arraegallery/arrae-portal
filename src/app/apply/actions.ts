@@ -69,6 +69,15 @@ async function agreed() {
   return me;
 }
 
+/** Saves the typed answers so the applicant can leave and pick up where they left off. Photos aren't included. */
+export async function saveApplicationDraft(draft: Record<string, unknown>) {
+  const { email } = await agreed();
+  const json = JSON.stringify(draft ?? {});
+  if (json.length > 60_000) throw new Error("That's too much text to save");
+  await db.update(s.applicantSignups).set({ formDraft: JSON.parse(json), draftSavedAt: new Date() }).where(eq(s.applicantSignups.email, email));
+  return { savedAt: new Date().toISOString() };
+}
+
 /** Signed upload slots for the application's photos, artist photo and CV. */
 export async function prepareApplicationUploads(opts: { photosPerWork: number[]; artistPhoto: boolean; cvExt: string | null }) {
   const { email, signup } = await agreed();
@@ -221,7 +230,7 @@ export async function submitApplication(input: ApplicationInput) {
     await db.insert(s.showWorks).values({ showId: show.id, workId: w.workId, status: "Submitted" }).onConflictDoNothing();
   }
   await ensureApplication(artistId!, show.id);
-  await db.update(s.applicantSignups).set({ submittedAt: new Date(), showId: show.id, artistId, draftId: null }).where(eq(s.applicantSignups.email, email));
+  await db.update(s.applicantSignups).set({ submittedAt: new Date(), showId: show.id, artistId, draftId: null, formDraft: null }).where(eq(s.applicantSignups.email, email));
   await logActivity({ artistId, showId: show.id, kind: "submission", body: `Applied to ${show.name} with ${works.length} work${works.length === 1 ? "" : "s"}`, actor: email });
 
   const first = name.split(/\s+/)[0];

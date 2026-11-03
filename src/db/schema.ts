@@ -291,6 +291,9 @@ export const applicantSignups = pgTable("applicant_signups", {
   // Reminders ARRAE sent to finish the application.
   nudgedAt: timestamp("nudged_at", { withTimezone: true }),
   nudgeCount: integer("nudge_count").default(0).notNull(),
+  // The application's typed answers, saved as they go (photos aren't kept until they submit).
+  formDraft: jsonb("form_draft").$type<Record<string, unknown>>(),
+  draftSavedAt: timestamp("draft_saved_at", { withTimezone: true }),
 });
 
 /** Small key/value settings, such as the private calendar feed token. */

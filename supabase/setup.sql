@@ -449,4 +449,9 @@ INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('ae9060c
 ALTER TABLE "applicant_signups" ADD COLUMN "nudged_at" timestamp with time zone;
 ALTER TABLE "applicant_signups" ADD COLUMN "nudge_count" integer DEFAULT 0 NOT NULL;
 INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('8dea69fc5af53b1119f444b96ed158c4ee9e774c5f6b6a1e068c0c2c3f7143ea', 1793746912168);
+
+-- 0016_application_draft
+ALTER TABLE "applicant_signups" ADD COLUMN "form_draft" jsonb;
+ALTER TABLE "applicant_signups" ADD COLUMN "draft_saved_at" timestamp with time zone;
+INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('6552dc43bc03b6f3bdd1ae1df24b4c25925b8269defd3fe847595a42c6afed74', 1793748123190);
 COMMIT;
