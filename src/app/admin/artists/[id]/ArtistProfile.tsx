@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { parseAmount } from "@/lib/amount";
 import { useState, useTransition } from "react";
 import {
   addNote,
@@ -375,7 +376,7 @@ function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: W
       setError(null);
       try {
         await updateWork(work.id, draft);
-        const n = (v: string) => (v.trim() ? Number(v.replace(/[$,]/g, "")) : null);
+        const n = (v: string) => (v.trim() ? parseAmount(v) : null);
         setWork({ ...work, ...draft, sold: !!draft.sold, price: n(draft.price), width: n(draft.width), height: n(draft.height), depth: n(draft.depth) });
         setEditing(false);
       } catch (e) {

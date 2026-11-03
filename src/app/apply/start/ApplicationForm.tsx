@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { BIO_MAX, BIO_MIN, CATEGORIES, MAX_WORKS, PRICE_MAX, PRICE_MIN } from "@/lib/application-fields";
 import { shrink, uploadPhotos } from "@/lib/photo-upload";
+import { parseAmount } from "@/lib/amount";
 import { Prose } from "@/components/Prose";
 import { prepareApplicationUploads, saveApplicationDraft, submitApplication } from "../actions";
 
@@ -77,7 +78,7 @@ export function ApplicationForm({ shows, prefill, draft }: { shows: Show[]; pref
       if (!w.category) return `${n}: choose a category`;
       if (!w.medium.trim()) return `${n}: add the medium`;
       if (!w.description.trim()) return `${n}: add a short description`;
-      const p = Number(w.price.replace(/[$,]/g, ""));
+      const p = parseAmount(w.price);
       if (!(p >= PRICE_MIN && p <= PRICE_MAX)) return `${n}: the price should be between $${PRICE_MIN} and $${PRICE_MAX.toLocaleString()}`;
       if (!w.files.length) return `${n}: add a photo`;
     }
@@ -118,7 +119,8 @@ export function ApplicationForm({ shows, prefill, draft }: { shows: Show[]; pref
         }
         setProgress("Sending your application…");
         const r = await submitApplication({ showId, ...f, photoPath: prep.photo!.path, cvPath, works: out });
-        router.push(`/apply/done?show=${encodeURIComponent(r.show)}`);
+        if (!r.ok) throw new Error(r.error);
+        router.push(`/apply/done?show=${encodeURIComponent(r.value.show)}`);
       } catch (e) {
         setError((e as Error).message);
         setProgress(null);

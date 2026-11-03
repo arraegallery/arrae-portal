@@ -8,6 +8,8 @@ import { ensureApplication, logActivity } from "@/lib/applications";
 import { recordWorkChanges } from "@/lib/changes";
 import { attachPhotos, createPhotoSlots, listPhotos, makeMainPhoto, removePhoto, type UploadedPhoto } from "@/lib/photos";
 import { arraeRecipients, notifyEmail, notifyNewMessage, portalUrl } from "@/lib/notify";
+import { parseAmount } from "@/lib/amount";
+import { asResult } from "@/lib/action-result";
 import { bookSlot, cancelBookingRow, formatSlot, getStudioBookings, KIND_LABEL, worksToHandle, type BookingKind } from "@/lib/logistics";
 
 const rand = () => crypto.randomUUID().replace(/-/g, "").slice(0, 14);
@@ -18,8 +20,8 @@ const clean = (v: unknown, max = 4000) => {
 const num = (v: unknown, label: string) => {
   const t = typeof v === "string" ? v.trim() : "";
   if (!t) return null;
-  const n = Number(t.replace(/[$,]/g, ""));
-  if (!Number.isFinite(n) || n < 0) throw new Error(`${label}: "${t}" isn't a number`);
+  const n = parseAmount(t);
+  if (!Number.isFinite(n) || n < 0) throw new Error(`${label}: "${t}" isn't a number we can read. Try something like 24, 24.5 or 24 1/2.`);
   return n;
 };
 
@@ -87,6 +89,10 @@ type NewWork = {
 
 /** Save a newly submitted work, its photos, and (optionally) put it forward for an open show. */
 export async function submitNewWork(input: NewWork) {
+  return asResult(() => saveNewWork(input));
+}
+
+async function saveNewWork(input: NewWork) {
   const me = await requireArtist();
   if (!/^wrk_[a-z0-9]{14}$/.test(input.workId)) throw new Error("Something went wrong with the upload. Please try again.");
   const title = clean(input.title, 300);
@@ -126,10 +132,12 @@ export async function submitNewWork(input: NewWork) {
 }
 
 /** An artist updating their own work's details. Every change lands in the change log. */
-export async function updateMyWork(
-  workId: string,
-  fields: { title?: string; year?: string; medium?: string; price?: string; width?: string; height?: string; depth?: string; unit?: string; description?: string },
-) {
+type MyWorkFields = { title?: string; year?: string; medium?: string; price?: string; width?: string; height?: string; depth?: string; unit?: string; description?: string };
+export async function updateMyWork(workId: string, fields: MyWorkFields) {
+  return asResult(() => saveMyWork(workId, fields));
+}
+
+async function saveMyWork(workId: string, fields: MyWorkFields) {
   const { me, rows } = await myWorks([workId]);
   const before = rows[0];
   if (before.soldAt) throw new Error("This work has sold, so its details are locked. Send us a message if something needs fixing.");
