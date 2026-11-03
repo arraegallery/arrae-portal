@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { updateShow } from "../actions";
 import { deleteEvent, saveEvent, type EventInput } from "./actions";
 import { DEADLINE_CHIP, DEADLINE_DOT, EVENT_KINDS, SHOW_CHIP, SHOW_DOT, WINDOW_CHIP, WINDOW_DOT } from "./kinds";
@@ -54,6 +54,20 @@ export function GalleryCalendar({ today, owner, feedUrl, shows, windows, events 
   const [month, setMonth] = useState(today.slice(0, 7));
   const [view, setView] = useState<"month" | "day">("month");
   const [day, setDay] = useState(today);
+  // Keep the month or day being looked at when the page reloads its data after a save.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem("cal:gallery") ?? "null");
+      if (saved?.month) setMonth(saved.month);
+      if (saved?.day) setDay(saved.day);
+      if (saved?.view === "month" || saved?.view === "day") setView(saved.view);
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("cal:gallery", JSON.stringify({ view, month, day }));
+    } catch {}
+  }, [view, month, day]);
   const openDay = (d: string) => {
     setDay(d);
     setMonth(d.slice(0, 7));

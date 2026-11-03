@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { EVENT_CHIP, OPEN_CHIP, SHIFT_KINDS, personColor, shiftTime } from "@/lib/schedule-kinds";
 
 export type CalShift = {
@@ -72,6 +72,20 @@ export function ScheduleCalendar({
   const [month, setMonth] = useState(today.slice(0, 7));
   const [week, setWeek] = useState(weekStart(today));
   const [justMe, setJustMe] = useState(false);
+  // Keep the month or week being looked at when the page reloads its data after a save.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(`cal:${location.pathname}`) ?? "null");
+      if (saved?.month) setMonth(saved.month);
+      if (saved?.week) setWeek(saved.week);
+      if (saved?.view === "week" || saved?.view === "month") setView(saved.view);
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(`cal:${location.pathname}`, JSON.stringify({ view, month, week }));
+    } catch {}
+  }, [view, month, week]);
   const shown = justMe && mine ? shifts.filter((s) => s.assistantEmail === mine) : shifts;
   const onDay = (d: string) => shown.filter((s) => s.date === d).sort((a, b) => a.startTime.localeCompare(b.startTime));
   const eventsOn = (d: string) => events.filter((e) => e.start <= d && e.end >= d);
