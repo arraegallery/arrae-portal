@@ -160,11 +160,18 @@ export function ScheduleAdmin({
 
 function ShiftForm({ value, people, onClose }: { value: ShiftInput; people: Person[]; onClose: () => void }) {
   const [v, setV] = useState(value);
+  const [copied, setCopied] = useState(false);
+  /** Turns this form into a new copy of the shift on the next day. Nothing is saved until Save. */
+  const duplicate = () => {
+    setV({ ...v, id: undefined, date: addDays(v.date, 1), repeatWeeks: 0 });
+    setCopied(true);
+  };
   const { pending, msg, run } = useRun();
   const set = (k: keyof ShiftInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setV({ ...v, [k]: e.target.value });
   const std = STANDARD[dow(v.date)];
   return (
-    <Modal title={v.id ? "Edit shift" : "Add a shift"} onClose={onClose}>
+    <Modal title={v.id ? "Edit shift" : copied ? "Copy of shift" : "Add a shift"} onClose={onClose}>
+      {copied && <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">This is a copy. Pick its date (and person), then click Save shift. The original stays as it was.</p>}
       <div className="grid grid-cols-2 gap-3">
         <label className="col-span-2 text-xs text-muted">
           Gallery Assistant
@@ -274,6 +281,11 @@ function ShiftForm({ value, people, onClose }: { value: ShiftInput; people: Pers
         <button onClick={onClose} className="rounded-md bg-white px-4 py-2 text-sm ring-1 ring-line">
           Cancel
         </button>
+        {v.id && (
+          <button onClick={duplicate} disabled={pending} className="rounded-md bg-white px-4 py-2 text-sm ring-1 ring-line">
+            Duplicate
+          </button>
+        )}
         {v.id && (
           <button onClick={() => confirm("Delete this shift?") && run(() => deleteShift(v.id!), onClose)} disabled={pending} className="ml-auto rounded-md px-3 py-2 text-sm text-rose-700 hover:bg-rose-50">
             Delete
