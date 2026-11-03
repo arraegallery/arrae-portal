@@ -51,8 +51,12 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
     .filter((sh) => swapByShift.has(sh.id) && sh.assistantEmail !== email && `${sh.date}T${sh.startTime}` > now.stamp)
     .map((sh) => ({ ...sh, swapId: swapByShift.get(sh.id)!.id, swapNote: swapByShift.get(sh.id)!.note }));
 
+  // Shifts nobody has yet, which anyone on the team can pick up.
+  const openShifts = shifts.filter((sh) => !sh.assistantEmail && `${sh.date}T${sh.startTime}` > now.stamp).slice(0, 15);
+
   return (
     <MySchedule
+      openShifts={openShifts}
       today={today}
       email={email}
       name={assistant ? callName(assistant) : null}

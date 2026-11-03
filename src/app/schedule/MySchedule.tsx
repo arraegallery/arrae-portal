@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { Modal, ScheduleCalendar, clock, type CalEvent, type CalShift } from "@/components/ScheduleCalendar";
 import { SHIFT_KINDS, shiftTime } from "@/lib/schedule-kinds";
-import { acceptSwap, cancelSwap, confirmMonth, requestSwap, saveHours } from "./actions";
+import { acceptSwap, cancelSwap, confirmMonth, pickUpShift, requestSwap, saveHours } from "./actions";
 
 type Upcoming = CalShift & { swapId: string | null; canSwap: boolean };
 type Offer = CalShift & { swapId: string; swapNote: string | null };
@@ -48,6 +48,7 @@ export function MySchedule({
   events,
   upcoming,
   offers,
+  openShifts,
   needHours,
   toConfirm,
   focus,
@@ -61,6 +62,7 @@ export function MySchedule({
   events: CalEvent[];
   upcoming: Upcoming[];
   offers: Offer[];
+  openShifts: CalShift[];
   needHours: CalShift[];
   toConfirm: string[];
   focus: { confirm: string | null; swap: string | null; log: string | null };
@@ -167,6 +169,33 @@ export function MySchedule({
             </section>
           )}
 
+          {openShifts.length > 0 && (
+            <section>
+              <h2 className="mb-2 font-display text-2xl">Open shifts</h2>
+              <ul className="divide-y divide-line rounded-lg bg-white ring-1 ring-line">
+                {openShifts.map((s) => (
+                  <li key={s.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <span className="font-medium">{shortDay(s.date)}</span> · {shiftTime(s)}
+                      <span className="block text-xs text-muted">
+                        {kind(s)}
+                        {s.coordinateWith && ` · coordinate with ${s.coordinateWith}`}
+                      </span>
+                    </div>
+                    <button
+                      disabled={pending || !name}
+                      onClick={() => confirm(`Pick up the shift on ${longDay(s.date)} (${shiftTime(s)})?`) && run(async () => (await pickUpShift(s.id), "It's yours! The shift is on your schedule now."))}
+                      className="rounded-md bg-ink px-3 py-1 text-xs text-white disabled:opacity-40"
+                    >
+                      Pick up
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-xs text-muted">First come, first served. ARRAE gets a note when you pick one up.</p>
+            </section>
+          )}
+
           <section>
             <h2 className="mb-2 font-display text-2xl">Teammates need cover</h2>
             {offers.length ? (
@@ -227,6 +256,12 @@ export function MySchedule({
             {(() => {
               const u = upcoming.find((x) => x.id === open.id);
               const o = offers.find((x) => x.id === open.id);
+              if (!open.assistantEmail && name && openShifts.some((x) => x.id === open.id))
+                return (
+                  <button onClick={() => run(async () => (await pickUpShift(open.id), "It's yours! The shift is on your schedule now."), () => setOpen(null))} className="rounded-md bg-ink px-4 py-2 text-sm text-white">
+                    Pick up this shift
+                  </button>
+                );
               if (u && !u.swapId && u.canSwap)
                 return (
                   <button onClick={() => (setSwapping(u), setOpen(null))} className="rounded-md bg-ink px-4 py-2 text-sm text-white">
