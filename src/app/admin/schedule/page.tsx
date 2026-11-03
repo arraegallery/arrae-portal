@@ -31,7 +31,7 @@ export default async function SchedulePage() {
       months={months}
       emailOn={emailConfigured()}
       cutoff={await swapCutoffHours()}
-      people={people.map((p) => ({ email: p.email, name: p.name, phone: p.phone, color: p.color, feed: portalUrl(`/api/schedule/${p.calendarToken}.ics`) }))}
+      people={people.map((p) => ({ email: p.email, name: p.name, preferredName: p.preferredName, phone: p.phone, color: p.color, feed: portalUrl(`/api/schedule/${p.calendarToken}.ics`) }))}
       shifts={shifts}
       events={events}
       confirmations={confirmations.map((c) => ({ email: c.email, month: c.month, sent: !!c.sentAt, confirmed: !!c.confirmedAt }))}

@@ -3,7 +3,9 @@ export const SHIFT_KINDS = [
   { id: "standard", label: "Gallery hours", chip: "bg-white ring-line" },
   { id: "opening", label: "Show Opening", chip: "bg-rose-50 ring-rose-300" },
   { id: "special", label: "Special Event", chip: "bg-violet-50 ring-violet-300" },
-  { id: "install", label: "Install / deinstall", chip: "bg-yellow-50 ring-yellow-300" },
+  { id: "setup", label: "Set up", chip: "bg-yellow-50 ring-yellow-300" },
+  { id: "breakdown", label: "Break down", chip: "bg-orange-50 ring-orange-300" },
+  { id: "install", label: "Drop-off / install", chip: "bg-yellow-50 ring-yellow-300" },
   { id: "other", label: "Other", chip: "bg-slate-50 ring-slate-300" },
 ] as const;
 export type ShiftKind = (typeof SHIFT_KINDS)[number]["id"];
@@ -26,3 +28,22 @@ export const personColor = (c: string | null | undefined) => PERSON_COLORS[c ?? 
 
 /** Show the gallery's events (openings, closures…) as context on the schedule. */
 export const EVENT_CHIP = "bg-stone-100 text-stone-700 ring-stone-200";
+
+/** Shift types that go on the gallery calendar as events, and the calendar event type they become. */
+export const EVENT_KIND_FOR_SHIFT: Record<string, string> = { opening: "opening", special: "event", setup: "install", breakdown: "install", install: "install" };
+
+/** What the team calls someone: their preferred name, else their first name. */
+export const callName = (p: { name: string; preferredName?: string | null }) => p.preferredName?.trim() || p.name.trim().split(/\s+/)[0] || p.name;
+
+/** "12:30pm–6pm", or "Hours TBD (up to 6 hrs)" for a shift whose hours aren't fixed yet. */
+export function shiftTime(sh: { startTime: string; endTime: string; timeTbd?: boolean | null; maxHours?: number | null }) {
+  if (sh.timeTbd) return `Hours TBD${sh.maxHours ? ` (up to ${sh.maxHours} hrs)` : ""}`;
+  const c = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return `${h % 12 || 12}${m ? `:${String(m).padStart(2, "0")}` : ""}${h < 12 ? "am" : "pm"}`;
+  };
+  return `${c(sh.startTime)}–${c(sh.endTime)}`;
+}
+
+/** When a shift is over, as "YYYY-MM-DDTHH:MM" gallery time. A shift with hours still TBD counts as over at the end of its day. */
+export const shiftEnds = (sh: { date: string; endTime: string; timeTbd: boolean }) => `${sh.date}T${sh.timeTbd ? "23:59" : sh.endTime}`;

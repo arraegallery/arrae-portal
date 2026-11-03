@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import { db, schema as s } from "@/db";
 import type { CalEvent, CalShift } from "@/components/ScheduleCalendar";
+import { callName } from "./schedule-kinds";
 
 export type ShiftRow = typeof s.shifts.$inferSelect;
 
@@ -11,7 +12,7 @@ export async function activeAssistants() {
 /** Shifts between two dates (inclusive), with who has them and whether a swap is open. */
 export async function calendarShifts(from: string, to: string): Promise<CalShift[]> {
   const rows = await db
-    .select({ sh: s.shifts, name: s.assistants.name, color: s.assistants.color })
+    .select({ sh: s.shifts, name: s.assistants.name, preferredName: s.assistants.preferredName, color: s.assistants.color })
     .from(s.shifts)
     .leftJoin(s.assistants, eq(s.assistants.email, s.shifts.assistantEmail))
     .where(and(gte(s.shifts.date, from), lte(s.shifts.date, to)))
@@ -22,7 +23,7 @@ export async function calendarShifts(from: string, to: string): Promise<CalShift
         (await db.select({ id: s.shiftSwaps.shiftId }).from(s.shiftSwaps).where(and(eq(s.shiftSwaps.status, "open"), inArray(s.shiftSwaps.shiftId, ids)))).map((r) => r.id),
       )
     : new Set<string>();
-  return rows.map(({ sh, name, color }) => ({
+  return rows.map(({ sh, name, preferredName, color }) => ({
     id: sh.id,
     date: sh.date,
     startTime: sh.startTime,
@@ -31,7 +32,11 @@ export async function calendarShifts(from: string, to: string): Promise<CalShift
     title: sh.title,
     notes: sh.notes,
     assistantEmail: sh.assistantEmail,
-    assistantName: name,
+    assistantName: name ? callName({ name, preferredName }) : null,
+    timeTbd: sh.timeTbd,
+    maxHours: sh.maxHours,
+    coordinateWith: sh.coordinateWith,
+    onCalendar: !!sh.eventId,
     color,
     swapOpen: open.has(sh.id),
   }));

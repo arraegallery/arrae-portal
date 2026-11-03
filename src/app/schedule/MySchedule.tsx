@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { Modal, ScheduleCalendar, clock, type CalEvent, type CalShift } from "@/components/ScheduleCalendar";
-import { SHIFT_KINDS } from "@/lib/schedule-kinds";
+import { SHIFT_KINDS, shiftTime } from "@/lib/schedule-kinds";
 import { acceptSwap, cancelSwap, confirmMonth, requestSwap, saveHours } from "./actions";
 
 type Upcoming = CalShift & { swapId: string | null; canSwap: boolean };
@@ -116,9 +116,10 @@ export function MySchedule({
               {upcoming.slice(0, 12).map((s) => (
                 <li key={s.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-sm">
                   <div className="min-w-0 flex-1">
-                    <span className="font-medium">{shortDay(s.date)}</span> · {clock(s.startTime)}–{clock(s.endTime)}
+                    <span className="font-medium">{shortDay(s.date)}</span> · {shiftTime(s)}
                     <span className="block text-xs text-muted">
                       {kind(s)}
+                      {s.coordinateWith && ` · coordinate with ${s.coordinateWith}`}
                       {s.notes && ` · ${s.notes}`}
                     </span>
                   </div>
@@ -155,7 +156,7 @@ export function MySchedule({
                 {needHours.map((s) => (
                   <li key={s.id} className="flex items-center gap-2 px-3 py-2.5 text-sm">
                     <span className="flex-1">
-                      <span className="font-medium">{shortDay(s.date)}</span> · scheduled {clock(s.startTime)}–{clock(s.endTime)}
+                      <span className="font-medium">{shortDay(s.date)}</span> · {s.timeTbd ? kind(s) : `scheduled ${clock(s.startTime)}–${clock(s.endTime)}`}
                     </span>
                     <button onClick={() => setLogging(s)} className="rounded-md bg-ink px-3 py-1 text-xs text-white">
                       Log hours
@@ -173,7 +174,7 @@ export function MySchedule({
                 {offers.map((s) => (
                   <li key={s.id} id={`offer-${s.swapId}`} className={`flex flex-wrap items-center gap-2 px-3 py-2.5 text-sm ${focus.swap === s.swapId ? "bg-amber-50" : ""}`}>
                     <div className="min-w-0 flex-1">
-                      <span className="font-medium">{shortDay(s.date)}</span> · {clock(s.startTime)}–{clock(s.endTime)} · {s.assistantName}
+                      <span className="font-medium">{shortDay(s.date)}</span> · {shiftTime(s)} · {s.assistantName}
                       <span className="block text-xs text-muted">
                         {kind(s)}
                         {s.swapNote && ` · “${s.swapNote}”`}
@@ -213,8 +214,13 @@ export function MySchedule({
         <Modal title={longDay(open.date)} onClose={() => setOpen(null)}>
           <p className="text-lg">{open.assistantName ?? "Open shift (nobody yet)"}</p>
           <p className="text-sm text-muted">
-            {clock(open.startTime)}–{clock(open.endTime)} · {kind(open)}
+            {shiftTime(open)} · {kind(open)}
           </p>
+          {open.coordinateWith && (
+            <p className="mt-2 text-sm">
+              Coordinate with <strong>{open.coordinateWith}</strong> to set the hours for the day.
+            </p>
+          )}
           {open.notes && <p className="mt-3 rounded-md bg-paper p-3 text-sm">{open.notes}</p>}
           {open.swapOpen && <p className="mt-3 text-sm text-amber-900">A swap has been asked for this shift.</p>}
           <div className="mt-5 flex gap-2">
@@ -290,7 +296,7 @@ function LogForm({ shift, today, onClose }: { shift: CalShift | null; today: str
     <Modal title={shift ? "Log your hours" : "Log extra hours"} onClose={onClose}>
       {shift ? (
         <p className="text-sm text-muted">
-          {longDay(shift.date)}. You were scheduled {clock(shift.startTime)}–{clock(shift.endTime)}. Change the times if you started or finished at a different time.
+          {longDay(shift.date)}. {shift.timeTbd ? "Enter the hours you actually worked." : `You were scheduled ${clock(shift.startTime)}–${clock(shift.endTime)}. Change the times if you started or finished at a different time.`}
         </p>
       ) : (
         <p className="text-sm text-muted">For time you worked that wasn&rsquo;t a scheduled shift, like helping with an install.</p>

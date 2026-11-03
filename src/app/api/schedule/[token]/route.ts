@@ -64,14 +64,19 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   ];
   for (const sh of shifts) {
     const what = sh.kind === "standard" ? "ARRAE gallery shift" : `ARRAE: ${sh.title || kindLabel(sh.kind)}`;
+    const tbd = sh.timeTbd ? `Hours TBD${sh.maxHours ? `, not more than ${sh.maxHours} hours` : ""}.` : null;
+    const coord = sh.coordinateWith ? `Coordinate with ${sh.coordinateWith} to set the hours.` : null;
+    const nextDay = addDays(sh.date, 1).replace(/-/g, "");
     lines.push(
       "BEGIN:VEVENT",
       `UID:${sh.id}@arrae-portal`,
       `DTSTAMP:${stamp(new Date())}`,
-      `DTSTART;TZID=America/New_York:${local(sh.date, sh.startTime)}`,
-      `DTEND;TZID=America/New_York:${local(sh.date, sh.endTime)}`,
-      fold(`SUMMARY:${esc(what)}`),
-      fold(`DESCRIPTION:${esc([sh.notes, `Your schedule: ${portalUrl("/schedule")}`].filter(Boolean).join("\n\n"))}`),
+      // A shift whose hours aren't set yet is an all-day entry until they are.
+      ...(sh.timeTbd
+        ? [`DTSTART;VALUE=DATE:${sh.date.replace(/-/g, "")}`, `DTEND;VALUE=DATE:${nextDay}`]
+        : [`DTSTART;TZID=America/New_York:${local(sh.date, sh.startTime)}`, `DTEND;TZID=America/New_York:${local(sh.date, sh.endTime)}`]),
+      fold(`SUMMARY:${esc(sh.timeTbd ? `${what} (hours TBD)` : what)}`),
+      fold(`DESCRIPTION:${esc([tbd, coord, sh.notes, `Your schedule: ${portalUrl("/schedule")}`].filter(Boolean).join("\n\n"))}`),
       "LOCATION:ARRAE Gallery",
       "END:VEVENT",
     );

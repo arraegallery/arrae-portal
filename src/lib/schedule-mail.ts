@@ -3,12 +3,14 @@ import { db, schema as s } from "@/db";
 import { notifyEmail, portalUrl } from "./notify";
 import { addDays, galleryNow, kindLabel, longDate, monthEnd, monthName, shortDate, timeRange, weekday } from "./schedule";
 import { activeAssistants } from "./schedule-data";
+import { callName, shiftEnds, shiftTime } from "./schedule-kinds";
 
 type Shift = typeof s.shifts.$inferSelect;
 type Assistant = typeof s.assistants.$inferSelect;
 
-const first = (name: string) => name.trim().split(/\s+/)[0] || name;
-const line = (sh: Shift) => `• ${shortDate(sh.date)} · ${timeRange(sh.startTime, sh.endTime)}${sh.kind !== "standard" ? ` · ${sh.title || kindLabel(sh.kind)}` : ""}`;
+const line = (sh: Shift) =>
+  `• ${shortDate(sh.date)} · ${shiftTime(sh)}${sh.kind !== "standard" ? ` · ${sh.title || kindLabel(sh.kind)}` : ""}${sh.coordinateWith ? ` · coordinate with ${sh.coordinateWith}` : ""}`;
+
 
 async function shiftsFor(email: string, from: string, to: string) {
   return db
@@ -43,7 +45,7 @@ export async function sendMonthlySchedules(month: string, opts: { again?: boolea
     const ok = await notifyEmail([a.email], {
       subject: `Your ARRAE schedule for ${monthName(month)}: please confirm`,
       heading: `Your ${monthName(month).split(" ")[0]} schedule`,
-      body: `Hi ${first(a.name)},\n\nHere are your gallery shifts for ${monthName(month)} (${list.length} ${list.length === 1 ? "shift" : "shifts"}, ${Math.round((total / 60) * 10) / 10} hours):\n\n${list.map(line).join("\n")}\n\nPlease click the button to confirm you can work these. If something doesn't work, you can ask a teammate to swap from your schedule page.`,
+      body: `Hi ${callName(a)},\n\nHere are your gallery shifts for ${monthName(month)} (${list.length} ${list.length === 1 ? "shift" : "shifts"}, ${Math.round((total / 60) * 10) / 10} hours):\n\n${list.map(line).join("\n")}\n\nPlease click the button to confirm you can work these. If something doesn't work, you can ask a teammate to swap from your schedule page.`,
       buttonLabel: "Confirm my schedule",
       buttonUrl: portalUrl(`/schedule?confirm=${month}`),
     });
@@ -73,7 +75,7 @@ export async function sendWeeklyReminders(today: string) {
     const ok = await notifyEmail([a.email], {
       subject: `Your ARRAE shifts this week`,
       heading: "Your week at the gallery",
-      body: `Hi ${first(a.name)},\n\nHere's your week:\n\n${list.map(line).join("\n")}${others.length ? `\n\nTeammates are looking for someone to take these shifts:\n${others.join("\n")}` : ""}\n\nSee you at the gallery!`,
+      body: `Hi ${callName(a)},\n\nHere's your week:\n\n${list.map(line).join("\n")}${others.length ? `\n\nTeammates are looking for someone to take these shifts:\n${others.join("\n")}` : ""}\n\nSee you at the gallery!`,
       buttonLabel: "Open my schedule",
       buttonUrl: portalUrl("/schedule"),
     });
@@ -84,12 +86,12 @@ export async function sendWeeklyReminders(today: string) {
 
 async function openSwapLines() {
   const rows = await db
-    .select({ sw: s.shiftSwaps, sh: s.shifts, name: s.assistants.name })
+    .select({ sw: s.shiftSwaps, sh: s.shifts, name: s.assistants.name, preferredName: s.assistants.preferredName })
     .from(s.shiftSwaps)
     .innerJoin(s.shifts, eq(s.shifts.id, s.shiftSwaps.shiftId))
     .leftJoin(s.assistants, eq(s.assistants.email, s.shiftSwaps.fromEmail))
     .where(and(eq(s.shiftSwaps.status, "open"), gte(s.shifts.date, galleryNow().date)));
-  return rows.map((r) => ({ fromEmail: r.sw.fromEmail, text: `${line(r.sh)} (${r.name ? first(r.name) : "a teammate"})` }));
+  return rows.map((r) => ({ fromEmail: r.sw.fromEmail, text: `${line(r.sh)} (${r.name ? callName({ name: r.name, preferredName: r.preferredName }) : "a teammate"})` }));
 }
 
 /** After a shift ends, ask its assistant to log the hours they actually worked. */
@@ -99,7 +101,7 @@ export async function sendHoursReminders(now = galleryNow()) {
     .from(s.shifts)
     .innerJoin(s.assistants, eq(s.assistants.email, s.shifts.assistantEmail))
     .where(and(isNull(s.shifts.hoursReminderAt), isNotNull(s.shifts.assistantEmail), gte(s.shifts.date, addDays(now.date, -2)), lte(s.shifts.date, now.date)));
-  const ended = due.filter(({ sh }) => `${sh.date}T${sh.endTime}` <= now.stamp);
+  const ended = due.filter(({ sh }) => shiftEnds(sh) <= now.stamp);
   if (!ended.length) return { sent: 0 };
   const logged = new Set(
     (await db.select({ id: s.hourLogs.shiftId }).from(s.hourLogs).where(inArray(s.hourLogs.shiftId, ended.map((e) => e.sh.id)))).map((r) => r.id),
@@ -110,7 +112,7 @@ export async function sendHoursReminders(now = galleryNow()) {
       const ok = await notifyEmail([a.email], {
         subject: `Log your hours for ${shortDate(sh.date)}`,
         heading: "Thanks for today!",
-        body: `Hi ${first(a.name)},\n\nYour shift on ${longDate(sh.date)} (${timeRange(sh.startTime, sh.endTime)}) is over. Please log the hours you actually worked. It takes a few seconds, and we use it for your hours report at the end of the semester.`,
+        body: `Hi ${callName(a)},\n\nYour shift on ${longDate(sh.date)}${sh.timeTbd ? "" : ` (${timeRange(sh.startTime, sh.endTime)})`} is over. Please log the hours you actually worked. It takes a few seconds, and we use it for your hours report at the end of the semester.`,
         buttonLabel: "Log my hours",
         buttonUrl: portalUrl(`/schedule?log=${sh.id}`),
       });
@@ -131,14 +133,14 @@ export async function announceSwap(swapId: string) {
     .leftJoin(s.assistants, eq(s.assistants.email, s.shiftSwaps.fromEmail))
     .where(eq(s.shiftSwaps.id, swapId));
   if (!row) return 0;
-  const who = row.from?.name ?? row.sw.fromEmail;
+  const who = row.from ? callName(row.from) : row.sw.fromEmail;
   const others = (await activeAssistants()).filter((a: Assistant) => a.email !== row.sw.fromEmail);
   let sent = 0;
   for (const a of others) {
     const ok = await notifyEmail([a.email], {
-      subject: `Can you take ${first(who)}'s shift on ${shortDate(row.sh.date)}?`,
+      subject: `Can you take ${who}'s shift on ${shortDate(row.sh.date)}?`,
       heading: "A shift is up for grabs",
-      body: `Hi ${first(a.name)},\n\n${who} is looking for someone to take this shift:\n\n${line(row.sh)}${row.sw.note ? `\n\n"${row.sw.note}"` : ""}\n\nIf you can work it, click the button and accept. The first person to accept gets the shift.`,
+      body: `Hi ${callName(a)},\n\n${who} is looking for someone to take this shift:\n\n${line(row.sh)}${row.sw.note ? `\n\n"${row.sw.note}"` : ""}\n\nIf you can work it, click the button and accept. The first person to accept gets the shift.`,
       buttonLabel: "See the shift",
       buttonUrl: portalUrl(`/schedule?swap=${swapId}`),
     });
@@ -158,17 +160,17 @@ export async function announceSwapTaken(swapId: string, arrae: string[]) {
   const people = await db.select().from(s.assistants).where(inArray(s.assistants.email, [row.sw.fromEmail, row.sw.takenBy]));
   const from = people.find((p) => p.email === row.sw.fromEmail);
   const taker = people.find((p) => p.email === row.sw.takenBy);
-  const takerName = taker?.name ?? row.sw.takenBy;
+  const takerName = taker ? callName(taker) : row.sw.takenBy;
   await notifyEmail([row.sw.fromEmail], {
-    subject: `${first(takerName)} is taking your shift on ${shortDate(row.sh.date)}`,
+    subject: `${takerName} is taking your shift on ${shortDate(row.sh.date)}`,
     heading: "Your swap is done",
-    body: `Hi ${from ? first(from.name) : "there"},\n\n${takerName} accepted your shift:\n\n${line(row.sh)}\n\nIt's off your schedule now.`,
+    body: `Hi ${from ? callName(from) : "there"},\n\n${takerName} accepted your shift:\n\n${line(row.sh)}\n\nIt's off your schedule now.`,
     buttonLabel: "Open my schedule",
     buttonUrl: portalUrl("/schedule"),
   });
   await notifyEmail(arrae, {
-    subject: `Shift swap: ${first(takerName)} is covering ${shortDate(row.sh.date)}`,
-    body: `${takerName} took ${from?.name ?? row.sw.fromEmail}'s shift:\n\n${line(row.sh)}`,
+    subject: `Shift swap: ${takerName} is covering ${shortDate(row.sh.date)}`,
+    body: `${takerName} took ${from ? callName(from) : row.sw.fromEmail}'s shift:\n\n${line(row.sh)}`,
     buttonLabel: "Open the schedule",
     buttonUrl: portalUrl("/admin/schedule"),
   });
