@@ -288,6 +288,9 @@ export const applicantSignups = pgTable("applicant_signups", {
   showId: text("show_id").references(() => shows.id, { onDelete: "set null" }),
   artistId: text("artist_id").references(() => artists.id, { onDelete: "set null" }),
   submittedAt: timestamp("submitted_at", { withTimezone: true }),
+  // Reminders ARRAE sent to finish the application.
+  nudgedAt: timestamp("nudged_at", { withTimezone: true }),
+  nudgeCount: integer("nudge_count").default(0).notNull(),
 });
 
 /** Small key/value settings, such as the private calendar feed token. */

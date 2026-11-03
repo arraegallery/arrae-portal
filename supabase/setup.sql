@@ -444,4 +444,9 @@ ALTER TABLE "shifts" ADD CONSTRAINT "shifts_event_id_gallery_events_id_fk" FOREI
 UPDATE "shifts" SET "kind" = 'breakdown' WHERE "kind" = 'install' AND ("title" ILIKE '%break%down%' OR "title" ILIKE '%deinstall%');
 UPDATE "shifts" SET "kind" = 'setup' WHERE "kind" = 'install' AND "title" ILIKE '%set%up%';
 INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('ae9060c948e4953a86fcbd932705b3cd462d955df80a738a7ea57c22b66d8256', 1793731363728);
+
+-- 0015_applicant_nudge
+ALTER TABLE "applicant_signups" ADD COLUMN "nudged_at" timestamp with time zone;
+ALTER TABLE "applicant_signups" ADD COLUMN "nudge_count" integer DEFAULT 0 NOT NULL;
+INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('8dea69fc5af53b1119f444b96ed158c4ee9e774c5f6b6a1e068c0c2c3f7143ea', 1793746912168);
 COMMIT;
