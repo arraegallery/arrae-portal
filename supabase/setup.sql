@@ -415,4 +415,22 @@ ALTER TABLE "shift_swaps" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "hour_logs" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "schedule_confirmations" ENABLE ROW LEVEL SECURITY;
 INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('b8c6bb8b3ee4d32ef4a51704ecb9d8b0668f410a1b7d2b331431498834046574', 1793726933542);
+
+-- 0013_team_is_schedule
+-- The Team page and the schedule are one list of people: every active team member is a Gallery Assistant, and vice versa.
+INSERT INTO "assistants" ("email", "name", "color", "calendar_token", "added_by")
+SELECT t."email",
+       COALESCE(NULLIF(trim(t."name"), ''), split_part(t."email", '@', 1)),
+       (ARRAY['violet','sky','amber','emerald','rose','teal','orange','indigo','lime','fuchsia'])[1 + ((row_number() OVER (ORDER BY t."created_at") - 1 + (SELECT count(*) FROM "assistants")) % 10)::int],
+       md5(random()::text || t."email"),
+       t."added_by"
+FROM "team_members" t
+WHERE t."revoked_at" IS NULL
+ON CONFLICT ("email") DO UPDATE SET "removed_at" = NULL;
+INSERT INTO "team_members" ("email", "name", "role", "added_by")
+SELECT a."email", a."name", 'staff', a."added_by"
+FROM "assistants" a
+WHERE a."removed_at" IS NULL
+ON CONFLICT ("email") DO UPDATE SET "revoked_at" = NULL, "name" = COALESCE("team_members"."name", EXCLUDED."name");
+INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('e3f7cb17e803a3ea285ad3bde4c0693c28f527290641a820943d708c0e171a0d', 1793728186571);
 COMMIT;

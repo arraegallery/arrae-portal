@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireAssistant } from "@/lib/schedule";
+import { teamRoleFor } from "@/lib/team";
 import { supabaseForRequest } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ async function signOut() {
 /** The Gallery Assistant area: only the schedule, never artist data. */
 export default async function ScheduleLayout({ children }: { children: React.ReactNode }) {
   const { assistant, owner, email } = await requireAssistant();
+  const team = owner || !!(await teamRoleFor(email));
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur">
@@ -34,8 +36,8 @@ export default async function ScheduleLayout({ children }: { children: React.Rea
             <Link href="/schedule/account" className="rounded-md px-2 py-1 hover:bg-white">
               Account
             </Link>
-            {owner && (
-              <Link href="/admin/schedule" className="rounded-md px-2 py-1 text-muted hover:bg-white">
+            {team && (
+              <Link href={owner ? "/admin/schedule" : "/admin"} className="rounded-md px-2 py-1 text-muted hover:bg-white">
                 Back to admin
               </Link>
             )}

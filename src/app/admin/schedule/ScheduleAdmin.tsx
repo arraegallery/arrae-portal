@@ -6,11 +6,9 @@ import { useState, useTransition } from "react";
 import { Modal, ScheduleCalendar, addDays, clock, type CalEvent, type CalShift } from "@/components/ScheduleCalendar";
 import { PERSON_COLORS, SHIFT_KINDS, personColor } from "@/lib/schedule-kinds";
 import {
-  addAssistant,
   clearOpenShifts,
   deleteShift,
   fillStandardHours,
-  removeAssistant,
   saveShift,
   sendMonthNow,
   setSwapCutoff,
@@ -113,7 +111,11 @@ export function ScheduleAdmin({
 
       {people.length === 0 && (
         <p className="mb-4 rounded-lg bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
-          Start by adding your Gallery Assistants under <a href="#assistants" className="underline">Gallery Assistants</a> below. Then fill in gallery hours and assign each shift.
+          Start by adding your team on the{" "}
+          <Link href="/admin/team" className="underline">
+            Team page
+          </Link>
+          . Everyone there is on the schedule. Then fill in gallery hours and assign each shift.
         </p>
       )}
 
@@ -290,12 +292,7 @@ function FillForm({ today, people, onClose }: { today: string; people: Person[];
 }
 
 function Roster({ people, months, confirmations }: { people: Person[]; months: string[]; confirmations: Confirmation[] }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [welcome, setWelcome] = useState(true);
   const [edit, setEdit] = useState<Person | null>(null);
-  const { pending, msg, run } = useRun();
   const status = (p: Person, m: string) => {
     const c = confirmations.find((x) => x.email === p.email && x.month === m);
     if (c?.confirmed) return <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-900">Confirmed</span>;
@@ -305,7 +302,7 @@ function Roster({ people, months, confirmations }: { people: Person[]; months: s
   return (
     <section id="assistants">
       <h2 className="mb-2 font-display text-2xl">Gallery Assistants</h2>
-      <p className="mb-3 text-sm text-muted">They sign in at the portal with their email and see only the schedule: their own shifts, the team&rsquo;s, swaps and hours.</p>
+      <p className="mb-3 text-sm text-muted">Your team. Each person sees their shifts and the team&rsquo;s under My shifts, and confirms each month here.</p>
       <div className="overflow-x-auto rounded-lg bg-white ring-1 ring-line">
         <table className="w-full text-sm">
           <thead className="bg-paper text-left text-xs uppercase tracking-wider text-muted">
@@ -349,43 +346,12 @@ function Roster({ people, months, confirmations }: { people: Person[]; months: s
           </tbody>
         </table>
       </div>
-      <div className="mt-4 rounded-lg bg-white p-4 ring-1 ring-line">
-        <h3 className="text-xs uppercase tracking-wider text-muted">Add a Gallery Assistant</h3>
-        <div className="mt-2 grid gap-3 sm:grid-cols-3">
-          <label className="text-xs text-muted">
-            Name
-            <input value={name} onChange={(e) => setName(e.target.value)} className={input} />
-          </label>
-          <label className="text-xs text-muted">
-            Email
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={input} />
-          </label>
-          <label className="text-xs text-muted">
-            Phone (optional)
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} className={input} />
-          </label>
-        </div>
-        <label className="mt-3 flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={welcome} onChange={(e) => setWelcome(e.target.checked)} />
-          Email them a welcome with the sign-in link
-        </label>
-        <Note msg={msg} />
-        <button
-          onClick={() =>
-            run(
-              async () => {
-                const r = await addAssistant({ name, email, phone, welcome });
-                return `${name} is on the schedule${welcome ? (r.emailed ? " and has a welcome email." : ", but the welcome email didn't send.") : "."}`;
-              },
-              () => (setName(""), setEmail(""), setPhone("")),
-            )
-          }
-          disabled={pending}
-          className="mt-3 rounded-md bg-ink px-4 py-2 text-sm text-white disabled:opacity-40"
-        >
-          {pending ? "Adding…" : "Add"}
-        </button>
-      </div>
+      <p className="mt-3 text-sm">
+        <Link href="/admin/team" className="underline">
+          Add or remove people on the Team page
+        </Link>
+        <span className="text-muted">. Everyone on the team is on the schedule.</span>
+      </p>
       {edit && <PersonForm person={edit} onClose={() => setEdit(null)} />}
     </section>
   );
@@ -425,13 +391,9 @@ function PersonForm({ person, onClose }: { person: Person; onClose: () => void }
         <button onClick={onClose} className="rounded-md bg-white px-4 py-2 text-sm ring-1 ring-line">
           Cancel
         </button>
-        <button
-          onClick={() => confirm(`Take ${person.name} off the schedule? Their upcoming shifts become open shifts. Past hours stay in the report.`) && run(() => removeAssistant(person.email), onClose)}
-          disabled={pending}
-          className="ml-auto rounded-md px-3 py-2 text-sm text-rose-700 hover:bg-rose-50"
-        >
-          Remove
-        </button>
+        <Link href="/admin/team" className="ml-auto text-sm text-muted underline">
+          Remove on the Team page
+        </Link>
       </div>
     </Modal>
   );
