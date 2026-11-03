@@ -92,6 +92,13 @@
       "when": 1793726933542,
       "tag": "0012_gallery_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793728186571,
+      "tag": "0013_team_is_schedule",
+      "breakpoints": true
     }
   ]
 }

@@ -3,7 +3,6 @@
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema as s } from "@/db";
-import { notifyEmail, portalUrl } from "@/lib/notify";
 import { COLORS, STANDARD_HOURS, addDays, newId, weekday } from "@/lib/schedule";
 import { SHIFT_KINDS } from "@/lib/schedule-kinds";
 import { sendMonthlySchedules } from "@/lib/schedule-mail";
@@ -105,31 +104,6 @@ export async function clearOpenShifts(from: string, to: string) {
   return { removed: ids.length };
 }
 
-export async function addAssistant(input: { name: string; email: string; phone: string; welcome: boolean }) {
-  const actor = await requireOwner();
-  const email = input.email.trim().toLowerCase();
-  const name = input.name.trim().slice(0, 120);
-  if (!name) throw new Error("Add their name");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("That doesn't look like an email address");
-  const used = (await db.select({ c: s.assistants.color }).from(s.assistants)).map((r) => r.c);
-  const color = COLORS.find((c) => !used.includes(c)) ?? COLORS[used.length % COLORS.length];
-  await db
-    .insert(s.assistants)
-    .values({ email, name, phone: input.phone.trim() || null, color, calendarToken: crypto.randomUUID().replace(/-/g, ""), addedBy: actor })
-    .onConflictDoUpdate({ target: s.assistants.email, set: { name, phone: input.phone.trim() || null, removedAt: null } });
-  let emailed = false;
-  if (input.welcome)
-    emailed = await notifyEmail([email], {
-      subject: "Your ARRAE Gallery schedule is online",
-      heading: "Welcome to the ARRAE schedule",
-      body: `Hi ${name.split(/\s+/)[0]},\n\nYour gallery shifts now live in the ARRAE portal. There you can see your own schedule and the whole team's, ask a teammate to swap a shift, log the hours you worked, and add your shifts to your phone's calendar.\n\nSign in with this email address and we'll send you a link.`,
-      buttonLabel: "Open my schedule",
-      buttonUrl: portalUrl("/login"),
-    });
-  refresh();
-  return { emailed };
-}
-
 export async function updateAssistant(email: string, input: { name: string; phone: string; color: string }) {
   await requireOwner();
   const name = input.name.trim().slice(0, 120);
@@ -138,18 +112,7 @@ export async function updateAssistant(email: string, input: { name: string; phon
     .update(s.assistants)
     .set({ name, phone: input.phone.trim() || null, color: (COLORS as readonly string[]).includes(input.color) ? input.color : "violet" })
     .where(eq(s.assistants.email, email));
-  refresh();
-}
-
-/** Takes someone off the schedule. Their past shifts and hours stay for the report; future shifts become open. */
-export async function removeAssistant(email: string) {
-  await requireOwner();
-  await db.update(s.assistants).set({ removedAt: new Date() }).where(eq(s.assistants.email, email));
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-  await db
-    .update(s.shifts)
-    .set({ assistantEmail: null })
-    .where(and(eq(s.shifts.assistantEmail, email), gte(s.shifts.date, today)));
+  await db.update(s.teamMembers).set({ name }).where(eq(s.teamMembers.email, email));
   refresh();
 }
 

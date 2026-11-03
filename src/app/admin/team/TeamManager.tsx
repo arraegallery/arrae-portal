@@ -7,7 +7,7 @@ import { addTeamMember, setTeamAccess } from "./actions";
 type Member = { email: string; name: string | null; addedBy: string | null; since: string; revoked: boolean };
 const input = "mt-0.5 w-full rounded-md bg-white px-2 py-1.5 text-sm text-ink ring-1 ring-line";
 
-const CAN = ["Artists: profiles, details, photos, onboarding, notes", "Inbox: read and answer artist messages", "Logistics: drop-off and pick-up times, marking works received"];
+const CAN = ["Artists: profiles, details, photos, onboarding, notes", "Inbox: read and answer artist messages", "Logistics: drop-off and pick-up times, marking works received", "Schedule: their shifts and the team's, swaps, hours and calendar sync"];
 const CANNOT = ["Review boards and decisions", "Sandbox", "Waitlist", "Email artists (mass email)", "Shows, Shopify and Team settings"];
 
 export function TeamManager({ owners, members, configured }: { owners: string[]; members: Member[]; configured: boolean }) {
@@ -35,7 +35,7 @@ export function TeamManager({ owners, members, configured }: { owners: string[];
       <section className="py-6">
         <p className="text-xs uppercase tracking-[0.2em] text-muted">Private to ARRAE</p>
         <h1 className="font-display text-4xl">Team</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">Give interns and assistants access to the portal, and take it away again at any time. Removing someone works immediately, even if they are signed in.</p>
+        <p className="mt-1 max-w-2xl text-sm text-muted">Your team: interns and Gallery Assistants. Everyone you add here gets portal access and is on the Team schedule. Removing someone works immediately, even if they are signed in, and their upcoming shifts become open shifts.</p>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2">
