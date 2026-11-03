@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { teamRoleFor } from "@/lib/team";
 import { artistsForEmail } from "@/lib/artist-auth";
 import { supabaseConfigured, supabaseForRequest } from "@/lib/supabase/server";
+import { sendSignInLink } from "@/lib/sign-in-link";
 
 const MESSAGES: Record<string, string> = {
   sent: "If that email is on file with ARRAE, a sign-in link is on its way. Check your inbox.",
@@ -33,8 +34,11 @@ async function sendLink(formData: FormData) {
   if (!known) redirect("/login?error=sent");
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
-  const supabase = await supabaseForRequest();
-  await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: `${origin}/auth/callback` } });
+  try {
+    await sendSignInLink(email, origin, { purpose: "signin" });
+  } catch (e) {
+    console.error("sign-in link failed", e);
+  }
   redirect("/login?error=sent");
 }
 
