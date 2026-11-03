@@ -397,7 +397,15 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 function EventForm({ value, shows, onClose, onSaved }: { value: EventInput; shows: Show[]; onClose: () => void; onSaved: () => void }) {
   const [v, setV] = useState(value);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [pending, start] = useTransition();
+  /** Turns this form into a new copy of the event on the next day. Nothing is saved until Save. */
+  const duplicate = () => {
+    const days = v.endsOn ? Math.round((Date.parse(v.endsOn) - Date.parse(v.startsOn)) / 86400000) + 1 : 1;
+    const startsOn = addDays(v.startsOn, days);
+    setV({ ...v, id: undefined, startsOn, endsOn: v.endsOn ? addDays(startsOn, days - 1) : "" });
+    setCopied(true);
+  };
   const set = (k: keyof EventInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setV({ ...v, [k]: e.target.value });
   const run = (fn: () => Promise<void>) =>
     start(async () => {
@@ -410,7 +418,8 @@ function EventForm({ value, shows, onClose, onSaved }: { value: EventInput; show
       }
     });
   return (
-    <Modal title={v.id ? "Edit event" : "Add event"} onClose={onClose}>
+    <Modal title={v.id ? "Edit event" : copied ? "Copy of event" : "Add event"} onClose={onClose}>
+      {copied && <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">This is a copy. Pick its date, then click Save. The original stays as it was.</p>}
       <div className="grid grid-cols-2 gap-3">
         <label className="col-span-2 text-xs text-muted">
           Name
@@ -470,6 +479,11 @@ function EventForm({ value, shows, onClose, onSaved }: { value: EventInput; show
         <button onClick={onClose} className="rounded-md bg-white px-4 py-2 text-sm ring-1 ring-line">
           Cancel
         </button>
+        {v.id && (
+          <button onClick={duplicate} disabled={pending} className="rounded-md bg-white px-4 py-2 text-sm ring-1 ring-line">
+            Duplicate
+          </button>
+        )}
         {v.id && (
           <button
             onClick={() => confirm(`Delete "${v.title}"?`) && run(() => deleteEvent(v.id!))}
