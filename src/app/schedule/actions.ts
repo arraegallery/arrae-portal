@@ -1,10 +1,11 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema as s } from "@/db";
-import { arraeRecipients } from "@/lib/notify";
-import { canStillSwap, galleryInstant, minutesOf, newId, requireAssistant, swapCutoffHours } from "@/lib/schedule";
+import { arraeRecipients, notifyEmail, portalUrl } from "@/lib/notify";
+import { canStillSwap, galleryInstant, longDate, minutesOf, newId, requireAssistant, swapCutoffHours } from "@/lib/schedule";
+import { callName, kindLabelOf, shiftTime } from "@/lib/schedule-kinds";
 import { announceSwap, announceSwapTaken } from "@/lib/schedule-mail";
 
 const refresh = () => {
@@ -69,6 +70,28 @@ export async function acceptSwap(swapId: string) {
   if (!won.length) throw new Error("Someone just took this shift");
   await db.update(s.shifts).set({ assistantEmail: a.email, hoursReminderAt: null }).where(eq(s.shifts.id, sh.id));
   await announceSwapTaken(swapId, arraeRecipients());
+  refresh();
+}
+
+/** Claims an open shift (one nobody has). First come, first served; ARRAE gets an email. */
+export async function pickUpShift(shiftId: string) {
+  const a = await me();
+  const [sh] = await db.select().from(s.shifts).where(eq(s.shifts.id, shiftId));
+  if (!sh) throw new Error("That shift no longer exists");
+  if (sh.assistantEmail) throw new Error("Someone already picked up this shift");
+  if (galleryInstant(sh.date, sh.startTime).getTime() < Date.now() && !sh.timeTbd) throw new Error("This shift has already started");
+  const won = await db
+    .update(s.shifts)
+    .set({ assistantEmail: a.email })
+    .where(and(eq(s.shifts.id, shiftId), isNull(s.shifts.assistantEmail)))
+    .returning({ id: s.shifts.id });
+  if (!won.length) throw new Error("Someone just picked up this shift");
+  await notifyEmail(arraeRecipients(), {
+    subject: `${callName(a)} picked up an open shift`,
+    body: `${a.name} picked up the open shift on ${longDate(sh.date)}: ${shiftTime(sh)}${sh.kind !== "standard" ? ` · ${sh.title || kindLabelOf(sh.kind)}` : ""}.`,
+    buttonLabel: "Open the schedule",
+    buttonUrl: portalUrl("/admin/schedule"),
+  });
   refresh();
 }
 

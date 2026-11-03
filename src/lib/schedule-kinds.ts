@@ -47,3 +47,5 @@ export function shiftTime(sh: { startTime: string; endTime: string; timeTbd?: bo
 
 /** When a shift is over, as "YYYY-MM-DDTHH:MM" gallery time. A shift with hours still TBD counts as over at the end of its day. */
 export const shiftEnds = (sh: { date: string; endTime: string; timeTbd: boolean }) => `${sh.date}T${sh.timeTbd ? "23:59" : sh.endTime}`;
+
+export const kindLabelOf = (k: string) => SHIFT_KINDS.find((x) => x.id === k)?.label ?? "Shift";
