@@ -58,7 +58,7 @@ export function ApplicationSettings({ applyUrl, terms, custom, signups, showName
 
       <section className="rounded-lg bg-white p-4 ring-1 ring-line">
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-xs uppercase tracking-wider text-muted">Terms artists agree to before applying</h2>
+          <h2 className="text-xs uppercase tracking-wider text-muted">Terms artists read before applying</h2>
           {!editing && (
             <button onClick={() => (setDraft(terms), setEditing(true))} className="ml-auto rounded-md px-3 py-1 text-xs ring-1 ring-line">
               Edit terms
@@ -133,9 +133,9 @@ export function ApplicationSettings({ applyUrl, terms, custom, signups, showName
                     <span className="text-emerald-800">Applied {when(x.submitted)}</span>
                   )
                 ) : x.agreed ? (
-                  <span className="text-amber-800">Agreed to terms, hasn&rsquo;t sent the form</span>
+                  <span className="text-amber-800">Read the terms, hasn&rsquo;t sent the form</span>
                 ) : (
-                  <span className="text-muted">Gave their email, hasn&rsquo;t agreed to terms yet</span>
+                  <span className="text-muted">Gave their email, hasn&rsquo;t read the terms yet</span>
                 )}
               </span>
             </li>

@@ -22,7 +22,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
       <main className="mx-auto max-w-3xl px-4 pb-10 pt-20">
         <p className="text-xs uppercase tracking-[0.2em] text-muted">Step 2 of 3</p>
         <h1 className="font-display text-4xl">How we work with artists</h1>
-        <p className="mt-1 text-sm text-muted">Please read this before you apply. You&rsquo;ll agree to it at the bottom.</p>
+        <p className="mt-1 text-sm text-muted">Please read this before you apply, so you know how we work if you&rsquo;re selected. This isn&rsquo;t a contract: if we select your work, we&rsquo;ll send you our partnership agreement to review and sign then.</p>
         <article className="mt-6 rounded-lg bg-white p-6 ring-1 ring-line">
           <Prose text={terms.text} />
         </article>
@@ -30,11 +30,11 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
           <input type="hidden" name="version" value={terms.version} />
           <label className="flex items-start gap-3 text-sm">
             <input type="checkbox" name="agree" value="yes" required className="mt-1" />
-            <span>I have read the ARRAE artist partnership terms above and agree to them.</span>
+            <span>I&rsquo;ve read how ARRAE works with artists.</span>
           </label>
-          {error === "agree" && <p className="mt-2 text-sm text-rose-700">Please tick the box to agree before continuing.</p>}
-          {error === "changed" && <p className="mt-2 text-sm text-rose-700">The terms were just updated. Please read them again and agree.</p>}
-          <button className="mt-3 rounded-md bg-ink px-4 py-2 text-sm text-white">I agree, start my application</button>
+          {error === "agree" && <p className="mt-2 text-sm text-rose-700">Please tick the box to confirm you&rsquo;ve read this before continuing.</p>}
+          {error === "changed" && <p className="mt-2 text-sm text-rose-700">This page was just updated. Please read it again before continuing.</p>}
+          <button className="mt-3 rounded-md bg-ink px-4 py-2 text-sm text-white">Continue to my application</button>
           <p className="mt-3 text-xs text-muted">
             Not quite ready yet? Go back to{" "}
             <a href="https://arraegallery.com" className="underline">
