@@ -3,6 +3,7 @@ import { requireTeam } from "@/lib/team";
 import { getNewSubmissionCount, getShows, getUnreadCount } from "@/lib/queries";
 import { SearchBox } from "@/components/SearchBox";
 import { NavMenu, NavTop } from "@/components/NavMenu";
+import { assistantFor } from "@/lib/schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const shows = await getShows();
   const unread = await getUnreadCount();
   const fresh = owner ? await getNewSubmissionCount(email) : 0;
+  const onSchedule = !owner && !!(await assistantFor(email));
   const volumes = shows.filter((s) => s.type === "Volume").slice(-2).reverse();
   return (
     <div className="min-h-screen">
@@ -57,6 +59,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                   label="Gallery"
                   items={[
                     { href: "/admin/calendar", label: "Calendar", hint: "shows & events" },
+                    { href: "/admin/schedule", label: "Team schedule", hint: "Gallery Assistant shifts" },
+                    { href: "/admin/schedule/hours", label: "Hours report" },
                     { href: "/admin/logistics", label: "Logistics", hint: "drop-off & pick-up" },
                     { href: "/admin/shopify", label: "Shopify" },
                     { href: "/admin/team", label: "Team", divider: true },
@@ -71,6 +75,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                 </NavTop>
                 <NavTop href="/admin/logistics">Logistics</NavTop>
                 <NavTop href="/admin/calendar">Calendar</NavTop>
+                {onSchedule && <NavTop href="/schedule">My shifts</NavTop>}
               </>
             )}
           </nav>

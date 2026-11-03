@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db, schema as s } from "@/db";
-import { teamRoleFor } from "./team";
+import { staffHomeFor } from "./team";
 import { supabaseConfigured, supabaseForRequest } from "./supabase/server";
 
 const devArtistEmail = () => (process.env.NODE_ENV !== "production" ? process.env.DEV_ARTIST_EMAIL?.toLowerCase() : undefined);
@@ -34,7 +34,8 @@ export async function requireArtist() {
   if (!email) redirect("/login");
   const records = await artistsForEmail(email);
   if (!records.length) {
-    if (await teamRoleFor(email)) redirect("/admin");
+    const staff = await staffHomeFor(email);
+    if (staff) redirect(staff);
     const [signup] = await db.select({ email: s.applicantSignups.email }).from(s.applicantSignups).where(eq(s.applicantSignups.email, email));
     if (signup) redirect("/apply/start");
     redirect("/login?error=no-artist");

@@ -85,6 +85,13 @@
       "when": 1793658595177,
       "tag": "0011_gallery_calendar",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793726933542,
+      "tag": "0012_gallery_schedule",
+      "breakpoints": true
     }
   ]
 }

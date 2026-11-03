@@ -2,13 +2,14 @@ import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { db, schema as s } from "@/db";
-import { teamRoleFor } from "@/lib/team";
+import { staffHomeFor } from "@/lib/team";
 import { artistsForEmail } from "@/lib/artist-auth";
 import { supabaseForRequest } from "@/lib/supabase/server";
 
 /** Where a freshly signed-in person goes: the team to the admin, applicants back to their application, artists to their studio. */
 async function homeFor(email: string) {
-  if (await teamRoleFor(email)) return "/admin";
+  const staff = await staffHomeFor(email);
+  if (staff) return staff;
   const [signup] = await db.select().from(s.applicantSignups).where(eq(s.applicantSignups.email, email));
   if (signup && !signup.submittedAt) {
     const isArtist = (await artistsForEmail(email)).length > 0;
