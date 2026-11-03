@@ -4,12 +4,29 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Prose } from "@/components/Prose";
-import { saveApplicationTerms } from "../actions";
+import { nudgeApplicants, saveApplicationTerms } from "../actions";
 
-type Signup = { email: string; started: string; agreed: boolean; submitted: string | null; artistId: string | null; showId: string | null };
+type Signup = { email: string; started: string; agreed: boolean; submitted: string | null; artistId: string | null; showId: string | null; nudged: string | null; nudges: number };
+type Nudge = { subject: string; body: string; buttonLabel: string };
 const when = (iso: string) => new Date(iso).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" });
 
-export function ApplicationSettings({ applyUrl, terms, custom, signups, showNames }: { applyUrl: string; terms: string; custom: boolean; signups: Signup[]; showNames: Record<string, string> }) {
+export function ApplicationSettings({
+  applyUrl,
+  terms,
+  custom,
+  signups,
+  showNames,
+  nudge,
+  emailOn,
+}: {
+  applyUrl: string;
+  terms: string;
+  custom: boolean;
+  signups: Signup[];
+  showNames: Record<string, string>;
+  nudge: Nudge;
+  emailOn: boolean;
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(terms);
@@ -17,6 +34,21 @@ export function ApplicationSettings({ applyUrl, terms, custom, signups, showName
   const [copied, setCopied] = useState(false);
   const [filter, setFilter] = useState<"open" | "all">("open");
   const [error, setError] = useState<string | null>(null);
+  const [showNudge, setShowNudge] = useState(false);
+  const [nudgeMsg, setNudgeMsg] = useState<string | null>(null);
+  const remind = (emails: string[], label: string) => {
+    if (!confirm(`Email a reminder to finish the application to ${label}?`)) return;
+    start(async () => {
+      setNudgeMsg(null);
+      try {
+        const r = await nudgeApplicants(emails);
+        setNudgeMsg(`Sent ${r.sent} reminder${r.sent === 1 ? "" : "s"}.${r.skipped ? ` Skipped ${r.skipped} (already reminded in the last day, or already applied).` : ""}`);
+        router.refresh();
+      } catch (e) {
+        setNudgeMsg((e as Error).message);
+      }
+    });
+  };
   const [pending, start] = useTransition();
   const save = (text: string | null) =>
     start(async () => {
@@ -118,11 +150,45 @@ export function ApplicationSettings({ applyUrl, terms, custom, signups, showName
             Everyone ({signups.length})
           </button>
         </div>
+        {filter === "open" && unfinished.length > 0 && (
+          <div className="mt-2 rounded-lg bg-white p-3 text-sm ring-1 ring-line">
+            <div className="flex flex-wrap items-center gap-2">
+              <span>Nudge them to finish:</span>
+              <button
+                disabled={pending || !emailOn}
+                onClick={() => remind(unfinished.map((x) => x.email), `all ${unfinished.length} people who haven't finished`)}
+                className="rounded-md bg-ink px-3 py-1.5 text-xs text-white disabled:opacity-40"
+              >
+                Send reminder to all {unfinished.length}
+              </button>
+              <button onClick={() => setShowNudge(!showNudge)} className="text-xs underline">
+                {showNudge ? "Hide the email" : "See the email"}
+              </button>
+              {!emailOn && <span className="text-xs text-muted">Email isn&rsquo;t set up (RESEND_API_KEY).</span>}
+            </div>
+            {nudgeMsg && <p className="mt-2 text-xs text-emerald-800">{nudgeMsg}</p>}
+            {showNudge && (
+              <div className="mt-3 rounded-md bg-paper p-3 text-xs ring-1 ring-line">
+                <p className="font-medium">Subject: {nudge.subject}</p>
+                <p className="mt-2 whitespace-pre-line text-ink">{nudge.body}</p>
+                <p className="mt-2">
+                  <span className="rounded bg-ink px-2 py-1 text-white">{nudge.buttonLabel}</span>
+                </p>
+              </div>
+            )}
+          </div>
+        )}
         <ul className="mt-2 divide-y divide-line rounded-lg bg-white text-sm ring-1 ring-line">
           {shown.map((x) => (
             <li key={x.email} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
               <span className="font-medium">{x.email}</span>
               <span className="text-xs text-muted">started {when(x.started)}</span>
+              {x.nudged && (
+                <span className="text-xs text-muted">
+                  · reminded {when(x.nudged)}
+                  {x.nudges > 1 ? ` (${x.nudges} times)` : ""}
+                </span>
+              )}
               <span className="ml-auto text-xs">
                 {x.submitted ? (
                   x.artistId ? (
@@ -138,6 +204,11 @@ export function ApplicationSettings({ applyUrl, terms, custom, signups, showName
                   <span className="text-muted">Gave their email, hasn&rsquo;t read the terms yet</span>
                 )}
               </span>
+              {!x.submitted && emailOn && (
+                <button disabled={pending} onClick={() => remind([x.email], x.email)} className="rounded-md px-2 py-0.5 text-xs ring-1 ring-line hover:bg-paper disabled:opacity-40">
+                  Remind
+                </button>
+              )}
             </li>
           ))}
           {!shown.length && <li className="px-4 py-3 text-muted">No one yet.</li>}

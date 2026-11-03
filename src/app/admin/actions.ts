@@ -7,6 +7,7 @@ import { requireOwner, requireTeam } from "@/lib/team";
 import { APPLICATION_STATUSES, WORK_STATUSES, type ApplicationStatus, type WorkStatus } from "@/lib/status";
 import { ensureApplication } from "@/lib/applications";
 import { notifyNewMessage } from "@/lib/notify";
+import { nudgeContent } from "@/lib/apply-nudge";
 import { ARTIST_ONBOARDING, SHOW_ONBOARDING, readOnboarding } from "@/lib/onboarding";
 import { recordWorkChanges, TRACKED_FIELDS } from "@/lib/changes";
 import { attachPhotos, createPhotoSlots, listPhotos, makeMainPhoto, removePhoto, worksByIds, type UploadedPhoto } from "@/lib/photos";
@@ -561,4 +562,26 @@ export async function saveApplicationTerms(text: string | null) {
   else await db.insert(s.appSettings).values({ key: "application_terms", value: t.slice(0, 30000) }).onConflictDoUpdate({ target: s.appSettings.key, set: { value: t.slice(0, 30000) } });
   revalidatePath("/admin/shows");
   revalidatePath("/apply/start");
+}
+
+/** Emails a reminder to finish the application to people who started one and haven't sent it. Skips anyone reminded in the last 20 hours. */
+export async function nudgeApplicants(emails: string[]) {
+  await requireOwner();
+  const wanted = [...new Set(emails.map((e) => e.trim().toLowerCase()))].slice(0, 500);
+  if (!wanted.length) return { sent: 0, skipped: 0 };
+  const rows = await db.select().from(s.applicantSignups).where(inArray(s.applicantSignups.email, wanted));
+  const recent = Date.now() - 20 * 3600_000;
+  const due = rows.filter((r) => !r.submittedAt && !(r.nudgedAt && r.nudgedAt.getTime() > recent));
+  if (!due.length) return { sent: 0, skipped: wanted.length };
+  const content = await nudgeContent();
+  const r = await sendEmails(due.map((x) => ({ to: x.email, subject: content.subject, html: renderEmail(content), text: renderText(content) })));
+  const failed = new Set(r.failures.map((f) => f.to));
+  const ok = due.filter((x) => !failed.has(x.email)).map((x) => x.email);
+  if (ok.length)
+    await db
+      .update(s.applicantSignups)
+      .set({ nudgedAt: new Date(), nudgeCount: sql`${s.applicantSignups.nudgeCount} + 1` })
+      .where(inArray(s.applicantSignups.email, ok));
+  revalidatePath("/admin/shows");
+  return { sent: ok.length, skipped: wanted.length - ok.length };
 }
