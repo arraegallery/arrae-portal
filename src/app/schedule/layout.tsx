@@ -37,10 +37,20 @@ export default async function ScheduleLayout({ children }: { children: React.Rea
             <Link href="/schedule/account" className="rounded-md px-2 py-1 hover:bg-white">
               Account
             </Link>
-            {team && (
-              <Link href={owner ? "/admin/schedule" : "/admin"} className="rounded-md px-2 py-1 text-muted hover:bg-white">
+            {team && owner && (
+              <Link href="/admin/schedule" className="rounded-md px-2 py-1 text-muted hover:bg-white">
                 Back to admin
               </Link>
+            )}
+            {team && !owner && (
+              <>
+                <Link href="/admin/artists" className="rounded-md px-2 py-1 hover:bg-white">
+                  Artists
+                </Link>
+                <Link href="/admin/inbox" className="rounded-md px-2 py-1 hover:bg-white">
+                  Messages
+                </Link>
+              </>
             )}
           </nav>
           <form action={signOut} className="ml-auto flex items-center gap-3 text-xs text-muted">

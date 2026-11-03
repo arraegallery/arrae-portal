@@ -98,7 +98,10 @@ export function ArtistProfile({ profile, owner, agreement, documents }: { profil
   }
   const inShows = profile.showHistory.filter((h) => h.exhibited);
 
-  const input = "w-full rounded-md bg-white px-3 py-2 text-sm ring-1 ring-line focus:ring-ink";
+  // The team sees the details as plain read-only boxes; only owners can edit them.
+  const input = owner
+    ? "w-full rounded-md bg-white px-3 py-2 text-sm ring-1 ring-line focus:ring-ink"
+    : "w-full cursor-default resize-none rounded-md bg-paper px-3 py-2 text-sm ring-1 ring-line/60 outline-none";
   return (
     <main className="mx-auto max-w-6xl px-4 pb-32">
       <section className="py-6">
@@ -107,13 +110,14 @@ export function ArtistProfile({ profile, owner, agreement, documents }: { profil
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h1 className="font-display text-4xl">{saved.name}</h1>
+          {!owner && <span className="rounded-full bg-white px-2 py-0.5 text-xs text-muted ring-1 ring-line">View only</span>}
           {profile.onWaitlist && <span className={`rounded-full px-2 py-0.5 text-xs ring-1 ${STATUS_TONE.Waitlist}`}>On waitlist</span>}
         </div>
         <div className="mt-2 flex flex-wrap gap-2 text-xs">
           {profile.applications.map((ap) => (
             <Link
               key={ap.id}
-              href={ap.showId ? `/admin/review/${ap.showId}` : "#"}
+              href={owner && ap.showId ? `/admin/review/${ap.showId}` : "#"}
               className={`rounded-full px-2.5 py-1 ring-1 ${STATUS_TONE[ap.status] ?? STATUS_TONE.New}`}
               title={`Applied ${ap.submittedOn ?? ""}`}
             >
@@ -130,7 +134,7 @@ export function ArtistProfile({ profile, owner, agreement, documents }: { profil
             {FIELDS.map(([k, label]) => (
               <label key={k} className="text-sm">
                 <span className="text-xs text-muted">{label}</span>
-                <input value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} className={input} />
+                <input value={form[k]} readOnly={!owner} onChange={(e) => setForm({ ...form, [k]: e.target.value })} className={input} />
               </label>
             ))}
           </div>
@@ -142,18 +146,18 @@ export function ArtistProfile({ profile, owner, agreement, documents }: { profil
             </span>
             <textarea
               value={form.arraeBio}
-              onChange={(e) => setForm({ ...form, arraeBio: e.target.value })}
+              readOnly={!owner} onChange={(e) => setForm({ ...form, arraeBio: e.target.value })}
               placeholder="Your standardized bio, in ARRAE's voice. This is the one that goes to Shopify."
               className={`${input} mt-1 h-48 leading-relaxed`}
             />
           </label>
           <label className="block text-sm">
             <span className="text-xs text-muted">Artist's own bio / statement (as they submitted it)</span>
-            <textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} className={`${input} mt-1 h-40 leading-relaxed`} />
+            <textarea value={form.bio} readOnly={!owner} onChange={(e) => setForm({ ...form, bio: e.target.value })} className={`${input} mt-1 h-40 leading-relaxed`} />
           </label>
           <label className="block text-sm">
             <span className="text-xs text-muted">Internal notes (private)</span>
-            <textarea value={form.internalNotes} onChange={(e) => setForm({ ...form, internalNotes: e.target.value })} className={`${input} mt-1 h-28`} />
+            <textarea value={form.internalNotes} readOnly={!owner} onChange={(e) => setForm({ ...form, internalNotes: e.target.value })} className={`${input} mt-1 h-28`} />
           </label>
 
           <div>
@@ -164,9 +168,13 @@ export function ArtistProfile({ profile, owner, agreement, documents }: { profil
               <ul className="mt-2 divide-y divide-line rounded-lg bg-white text-sm ring-1 ring-line">
                 {profile.showHistory.map((h) => (
                   <li key={h.showId} className="flex items-center gap-3 px-3 py-2">
-                    <Link href={`/admin/review/${h.showId}`} className="font-medium hover:underline">
-                      {h.name}
-                    </Link>
+                    {owner ? (
+                      <Link href={`/admin/review/${h.showId}`} className="font-medium hover:underline">
+                        {h.name}
+                      </Link>
+                    ) : (
+                      <span className="font-medium">{h.name}</span>
+                    )}
                     <span className="text-xs text-muted">{h.type}</span>
                     <span className="ml-auto text-xs">
                       {h.exhibited ? (
@@ -189,7 +197,7 @@ export function ArtistProfile({ profile, owner, agreement, documents }: { profil
             <h2 className="text-xs uppercase tracking-wider text-muted">Onboarding</h2>
             <div className="mt-2 flex flex-wrap gap-2">
               {ARTIST_ONBOARDING.map(([k, label]) => (
-                <Chip key={k} done={!!onboarding[k]} label={label} onClick={() => toggleOnboarding(k, null)} />
+                <Chip key={k} done={!!onboarding[k]} label={label} disabled={!owner} onClick={() => toggleOnboarding(k, null)} />
               ))}
             </div>
             {owner && <AgreementPanel artistId={a.id} artistName={a.name} hasEmail={!!a.email} agreement={agreement} />}
@@ -210,7 +218,7 @@ export function ArtistProfile({ profile, owner, agreement, documents }: { profil
                       </p>
                       <div className="mt-1 flex flex-wrap gap-2">
                         {SHOW_ONBOARDING.map(([k, label]) => (
-                          <Chip key={k} done={!!steps[k]} label={label} onClick={() => toggleOnboarding(k, h.showId)} />
+                          <Chip key={k} done={!!steps[k]} label={label} disabled={!owner} onClick={() => toggleOnboarding(k, h.showId)} />
                         ))}
                       </div>
                     </div>
@@ -278,9 +286,9 @@ export function ArtistProfile({ profile, owner, agreement, documents }: { profil
   );
 }
 
-function Chip({ done, label, onClick }: { done: boolean; label: string; onClick: () => void }) {
+function Chip({ done, label, onClick, disabled }: { done: boolean; label: string; onClick: () => void; disabled?: boolean }) {
   return (
-    <button onClick={onClick} className={`rounded-full px-3 py-1 text-xs ring-1 ${done ? STATUS_TONE.Selected : "bg-white ring-line"}`}>
+    <button onClick={onClick} disabled={disabled} className={`rounded-full px-3 py-1 text-xs ring-1 disabled:cursor-default ${done ? STATUS_TONE.Selected : "bg-white ring-line"}`}>
       {done ? "✓ " : ""}
       {label}
     </button>
@@ -399,15 +407,19 @@ function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: W
                 </p>
               </div>
               <div className="ml-auto flex shrink-0 gap-3 text-xs text-muted">
-                <button onClick={() => setPanel(panel === "photos" ? null : "photos")} className="hover:underline">
-                  Photos
-                </button>
+                {owner && (
+                  <button onClick={() => setPanel(panel === "photos" ? null : "photos")} className="hover:underline">
+                    Photos
+                  </button>
+                )}
                 <button onClick={() => setPanel(panel === "ask" ? null : "ask")} className="hover:underline">
                   Ask for better photos
                 </button>
-                <button onClick={start} className="hover:underline">
-                  Edit
-                </button>
+                {owner && (
+                  <button onClick={start} className="hover:underline">
+                    Edit
+                  </button>
+                )}
               </div>
             </div>
             {work.photosRequestedAt && (
