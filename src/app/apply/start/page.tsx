@@ -85,6 +85,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
           website: existing?.website ?? "",
           education: existing?.education ?? "",
         }}
+        draft={signup?.formDraft ?? null}
       />
     </main>
   );
