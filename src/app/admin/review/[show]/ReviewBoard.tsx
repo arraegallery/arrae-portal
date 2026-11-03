@@ -35,12 +35,17 @@ export function ReviewBoard({
   sandboxIds,
   shows,
   artists,
+  focusArtist,
+  focusWork,
 }: {
   show: { id: string; name: string; type: string };
   entries: BoardEntry[];
   sandboxIds: string[];
   shows: { id: string; name: string }[];
   artists: { id: string; name: string; email: string }[];
+  /** Opened from a link, such as the New page: show this artist's application or this work. */
+  focusArtist?: string;
+  focusWork?: string;
 }) {
   const [entries, setEntries] = useState(initial);
   useEffect(() => setEntries(initial), [initial]);
@@ -62,8 +67,11 @@ export function ReviewBoard({
   const [category, setCategory] = useState("all");
   const [maxPrice, setMaxPrice] = useState("");
   const [query, setQuery] = useState("");
-  const [openArtist, setOpenArtist] = useState<string | null>(null);
-  const [openWork, setOpenWork] = useState<{ artistId: string; workId: string } | null>(null);
+  const [openArtist, setOpenArtist] = useState<string | null>(() => (focusArtist && !focusWork && initial.some((e) => e.artist.id === focusArtist) ? focusArtist : null));
+  const [openWork, setOpenWork] = useState<{ artistId: string; workId: string } | null>(() => {
+    const e = focusWork ? initial.find((x) => x.works.some((w) => w.id === focusWork)) : undefined;
+    return e && focusWork ? { artistId: e.artist.id, workId: focusWork } : null;
+  });
   const [, startTransition] = useTransition();
 
   const categories = useMemo(
