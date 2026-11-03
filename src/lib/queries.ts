@@ -498,7 +498,10 @@ export async function getRecentSubmissions(email: string) {
     artist: artist ?? "Unknown artist",
     showId: a.showId,
     show,
+    workId: a.workId,
     body: a.body,
+    // New applications from the apply page; everything else is a work sent from the studio.
+    isApplication: a.body.startsWith("Applied to "),
     at: a.createdAt.toISOString(),
     unseen: a.createdAt > since && !a.body.startsWith("Artist withdrew"),
   }));
