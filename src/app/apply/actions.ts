@@ -13,6 +13,8 @@ import { createPhotoSlots } from "@/lib/photos";
 import { supabaseAdmin, supabaseConfigured, supabaseForRequest } from "@/lib/supabase/server";
 import { getTerms } from "@/lib/terms";
 import { sendSignInLink } from "@/lib/sign-in-link";
+import { parseAmount } from "@/lib/amount";
+import { asResult } from "@/lib/action-result";
 
 const rand = () => crypto.randomUUID().replace(/-/g, "").slice(0, 14);
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -116,8 +118,8 @@ const clean = (v: string | null | undefined, max: number) => (v ?? "").trim().sl
 const num = (v: string, label: string) => {
   const t = v.trim();
   if (!t) return null;
-  const n = Number(t.replace(/[$,]/g, ""));
-  if (!Number.isFinite(n) || n <= 0) throw new Error(`${label}: "${t}" isn't a number`);
+  const n = parseAmount(t);
+  if (!Number.isFinite(n) || n <= 0) throw new Error(`${label}: "${t}" isn't a number we can read. Try something like 24, 24.5 or 24 1/2.`);
   return n;
 };
 const slug = (t: string) =>
@@ -131,6 +133,10 @@ const slug = (t: string) =>
 
 /** Step 3: the application itself. Creates (or updates) the artist, their application and the works. */
 export async function submitApplication(input: ApplicationInput) {
+  return asResult(() => saveApplication(input));
+}
+
+async function saveApplication(input: ApplicationInput) {
   const { email, signup } = await agreed();
   const [draftId, idList = ""] = (signup.draftId ?? "").split(":");
   const allowedWorks = idList.split(",").filter(Boolean);

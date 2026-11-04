@@ -8,6 +8,7 @@ import { APPLICATION_STATUSES, WORK_STATUSES, type ApplicationStatus, type WorkS
 import { ensureApplication } from "@/lib/applications";
 import { notifyNewMessage } from "@/lib/notify";
 import { nudgeContent } from "@/lib/apply-nudge";
+import { parseAmount } from "@/lib/amount";
 import { ARTIST_ONBOARDING, SHOW_ONBOARDING, readOnboarding } from "@/lib/onboarding";
 import { recordWorkChanges, TRACKED_FIELDS } from "@/lib/changes";
 import { attachPhotos, createPhotoSlots, listPhotos, makeMainPhoto, removePhoto, worksByIds, type UploadedPhoto } from "@/lib/photos";
@@ -328,7 +329,7 @@ export async function updateWork(
     if (v === undefined) return undefined;
     const t = v.trim();
     if (!t) return null;
-    const n = Number(t.replace(/[$,]/g, ""));
+    const n = parseAmount(t);
     if (!Number.isFinite(n) || n < 0) throw new Error(`"${v}" isn't a number`);
     return n;
   };

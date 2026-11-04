@@ -1,5 +1,6 @@
 "use client";
 
+import { parseAmount } from "@/lib/amount";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -250,7 +251,8 @@ function NewWorkForm({ show, onDone, onCancel }: { show: OpenShow; onDone: (titl
         const { workId, slots } = await prepareUploads(files.length);
         const images = await uploadPhotos(files, slots, setProgress);
         setProgress("Saving…");
-        await submitNewWork({ workId, ...f, images, showId: show.id });
+        const r = await submitNewWork({ workId, ...f, images, showId: show.id });
+        if (!r.ok) throw new Error(r.error);
         onDone(f.title.trim());
       } catch (e) {
         setError((e as Error).message);
@@ -357,8 +359,9 @@ function WorkCard({ work: initial }: { work: Work }) {
     start(async () => {
       setError(null);
       try {
-        await updateMyWork(work.id, draft);
-        const n = (v: string) => (v.trim() ? Number(v.replace(/[$,]/g, "")) : null);
+        const r = await updateMyWork(work.id, draft);
+        if (!r.ok) throw new Error(r.error);
+        const n = (v: string) => (v.trim() ? parseAmount(v) : null);
         setWork({ ...work, ...draft, price: n(draft.price), height: n(draft.height), width: n(draft.width), depth: n(draft.depth) });
         setEditing(false);
         router.refresh();
