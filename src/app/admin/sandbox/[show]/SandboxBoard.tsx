@@ -126,7 +126,7 @@ export function SandboxBoard({
 
   const [newShowOpen, setNewShowOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newType, setNewType] = useState<"Volume" | "Takeover" | "ARRAE Finds">("Volume");
+  const [newType, setNewType] = useState<"Volume" | "Takeover">("Volume");
   const [creating, startCreate] = useTransition();
 
   return (
@@ -181,7 +181,6 @@ export function SandboxBoard({
               <select value={newType} onChange={(e) => setNewType(e.target.value as typeof newType)} className="rounded-md px-2 py-1.5 ring-1 ring-line">
                 <option>Volume</option>
                 <option>Takeover</option>
-                <option>ARRAE Finds</option>
               </select>
               <button disabled={creating} className="rounded-md bg-ink px-3 py-1.5 text-white disabled:opacity-50">
                 {creating ? "Creating…" : "Create"}

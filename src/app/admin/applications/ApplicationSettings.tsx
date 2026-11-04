@@ -64,9 +64,13 @@ export function ApplicationSettings({
   const unfinished = signups.filter((x) => !x.submitted);
   const shown = filter === "open" ? unfinished : signups;
   return (
-    <div className="mx-auto max-w-5xl space-y-8 px-4 pb-24">
+    <main className="mx-auto max-w-5xl space-y-8 px-4 pb-24">
+      <section className="pt-6">
+        <p className="text-xs uppercase tracking-[0.2em] text-muted">Private to ARRAE</p>
+        <h1 className="font-display text-4xl">Applications</h1>
+      </section>
       <section className="rounded-lg bg-white p-4 ring-1 ring-line">
-        <h2 className="font-display text-2xl">Applications</h2>
+        <h2 className="text-xs uppercase tracking-wider text-muted">Apply link</h2>
         <p className="mt-1 text-sm text-muted">
           Artists apply at this link: email first, then your terms, then the form. Only shows that are open to submissions appear in its dropdown.
         </p>
@@ -214,6 +218,6 @@ export function ApplicationSettings({
           {!shown.length && <li className="px-4 py-3 text-muted">No one yet.</li>}
         </ul>
       </section>
-    </div>
+    </main>
   );
 }

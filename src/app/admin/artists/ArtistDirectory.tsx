@@ -9,13 +9,13 @@ const seenFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric
 
 export function ArtistDirectory({ artists, owner }: { artists: Row[]; owner: boolean }) {
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<"all" | "roster" | "needs-bio">("all");
+  const [filter, setFilter] = useState<"all" | "roster">("all");
   const [bySeen, setBySeen] = useState(false);
   const needle = q.trim().toLowerCase();
   const shown = artists.filter(
     (a) =>
       (!needle || a.name.toLowerCase().includes(needle) || a.email.toLowerCase().includes(needle)) &&
-      (filter === "all" || (filter === "roster" && a.everSelected) || (filter === "needs-bio" && a.everSelected && !a.hasArraeBio)),
+      (filter === "all" || (filter === "roster" && a.everSelected)),
   );
   if (bySeen) shown.sort((a, b) => (b.lastSeen ?? "").localeCompare(a.lastSeen ?? ""));
   return (
@@ -30,7 +30,6 @@ export function ArtistDirectory({ artists, owner }: { artists: Row[]; owner: boo
             [
               ["all", "Everyone"],
               ["roster", "Ever selected"],
-              ["needs-bio", "Selected, no ARRAE bio yet"],
             ] as const
           ).map(([v, label]) => (
             <button key={v} onClick={() => setFilter(v)} className={`rounded-full px-3 py-1 ring-1 ${filter === v ? "bg-ink text-white ring-ink" : "bg-white ring-line"}`}>

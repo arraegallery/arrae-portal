@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { ShowTabs } from "@/components/ShowTabs";
+import { ShowPicker } from "@/components/ShowPicker";
 import { addNote, addToSandbox, addWorksToShow, moveWorksToShow, reassignWorks, removeFromSandbox, removeWorksFromShow, requestBetterPhotos, setApplicationStatus, setWorkStatus } from "../../actions";
 
 const PHOTO_NOTE = "Thank you for applying! Could you send us better photos of these works? Straight on, in good natural light, filling the frame, with no glare or background. A detail shot is welcome too.";
@@ -34,6 +35,7 @@ export function ReviewBoard({
   entries: initial,
   sandboxIds,
   shows,
+  sameType,
   artists,
   focusArtist,
   focusWork,
@@ -42,6 +44,8 @@ export function ReviewBoard({
   entries: BoardEntry[];
   sandboxIds: string[];
   shows: { id: string; name: string }[];
+  /** Other shows of the same kind, for the switcher next to the title. */
+  sameType: { id: string; name: string }[];
   artists: { id: string; name: string; email: string }[];
   /** Opened from a link, such as the New page: show this artist's application or this work. */
   focusArtist?: string;
@@ -151,8 +155,11 @@ export function ReviewBoard({
     <main className="mx-auto max-w-[1600px] px-4 pb-24">
       <section className="flex flex-wrap items-end justify-between gap-4 pt-6">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-muted">{show.type} review</p>
-          <h1 className="font-display text-4xl">{show.name}</h1>
+          <p className="text-xs uppercase tracking-[0.2em] text-muted">{show.type === "Takeover" ? "Takeovers" : "Reviews"}</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="font-display text-4xl">{show.name}</h1>
+            <ShowPicker current={show.id} shows={sameType} />
+          </div>
         </div>
         <dl className="flex gap-6 text-sm">
           <div>

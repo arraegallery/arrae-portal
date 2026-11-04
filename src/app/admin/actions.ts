@@ -13,6 +13,7 @@ import { ARTIST_ONBOARDING, SHOW_ONBOARDING, readOnboarding } from "@/lib/onboar
 import { recordWorkChanges, TRACKED_FIELDS } from "@/lib/changes";
 import { attachPhotos, createPhotoSlots, listPhotos, makeMainPhoto, removePhoto, worksByIds, type UploadedPhoto } from "@/lib/photos";
 import { personalize, renderEmail, renderText, sendEmails, type EmailContent } from "@/lib/email";
+import { oneClickUrl, optedOut, unsubscribeUrl } from "@/lib/unsubscribe";
 
 async function log(entry: { artistId?: string | null; workId?: string | null; showId?: string | null; kind: string; body: string; actor: string }) {
   await db.insert(s.activity).values(entry);
@@ -368,9 +369,9 @@ function cleanMessage(m: EmailContent): EmailContent {
   return { subject, body, heading: m.heading?.trim().slice(0, 200), buttonLabel: m.buttonLabel?.trim().slice(0, 60), buttonUrl: m.buttonUrl?.trim().slice(0, 1000) };
 }
 
-function compose(m: EmailContent, name: string) {
-  const p: EmailContent = { ...m, subject: personalize(m.subject, name), heading: m.heading && personalize(m.heading, name), body: personalize(m.body, name) };
-  return { subject: p.subject, html: renderEmail(p), text: renderText(p) };
+function compose(m: EmailContent, name: string, email: string) {
+  const p: EmailContent = { ...m, subject: personalize(m.subject, name), heading: m.heading && personalize(m.heading, name), body: personalize(m.body, name), unsubscribeUrl: unsubscribeUrl(email) };
+  return { subject: p.subject, html: renderEmail(p), text: renderText(p), oneClickUnsubscribe: oneClickUrl(email) };
 }
 
 /** Send the message to the signed-in admin only, addressed as the first chosen artist. */
@@ -378,7 +379,7 @@ export async function sendTestMessage(message: EmailContent, sampleArtistId?: st
   const actor = await requireOwner();
   const m = cleanMessage(message);
   const [sample] = sampleArtistId ? await db.select({ name: s.artists.name }).from(s.artists).where(eq(s.artists.id, sampleArtistId)) : [];
-  const out = compose(m, sample?.name ?? "Artist");
+  const out = compose(m, sample?.name ?? "Artist", actor);
   const { failures } = await sendEmails([{ to: actor, ...out, subject: `[Test] ${out.subject}` }]);
   if (failures.length) throw new Error(`Test didn't send: ${failures[0].error}`);
   return actor;
@@ -400,14 +401,17 @@ export async function sendMessageToArtists(artistIds: string[], message: EmailCo
     seen.add(e);
     return true;
   });
+  const out = await optedOut(recipients.map((r) => r.email));
+  const unsubscribed = recipients.filter((r) => out.has(r.email.trim().toLowerCase())).map((r) => r.name);
   const skipped = rows.filter((r) => !recipients.includes(r)).map((r) => r.name);
-  const { sent, failures } = await sendEmails(recipients.map((r) => ({ to: r.email.trim(), ...compose(m, r.name) })));
+  const sending = recipients.filter((r) => !out.has(r.email.trim().toLowerCase()));
+  const { sent, failures } = await sendEmails(sending.map((r) => ({ to: r.email.trim(), ...compose(m, r.name, r.email.trim()) })));
   const failed = new Set(failures.map((f) => f.to.toLowerCase()));
-  const delivered = recipients.filter((r) => !failed.has(r.email.trim().toLowerCase()));
+  const delivered = sending.filter((r) => !failed.has(r.email.trim().toLowerCase()));
   if (delivered.length) await db.insert(s.activity).values(delivered.map((r) => ({ artistId: r.id, kind: "email", body: `Email sent: "${m.subject}"`, actor })));
   await log({ kind: "email-batch", body: `"${m.subject}" sent to ${sent} artist${sent === 1 ? "" : "s"}${failures.length ? `, ${failures.length} failed` : ""}`, actor });
   revalidatePath("/admin/messages");
-  return { sent, failed: failures.length, skipped, firstError: failures[0]?.error ?? null };
+  return { sent, failed: failures.length, skipped, unsubscribed, firstError: failures[0]?.error ?? null };
 }
 
 // ---- ARRAE bios from the Shopify artist collections ----
@@ -561,7 +565,7 @@ export async function saveApplicationTerms(text: string | null) {
   const t = text?.trim() ?? "";
   if (!t) await db.delete(s.appSettings).where(eq(s.appSettings.key, "application_terms"));
   else await db.insert(s.appSettings).values({ key: "application_terms", value: t.slice(0, 30000) }).onConflictDoUpdate({ target: s.appSettings.key, set: { value: t.slice(0, 30000) } });
-  revalidatePath("/admin/shows");
+  revalidatePath("/admin/applications");
   revalidatePath("/apply/start");
 }
 
@@ -572,10 +576,16 @@ export async function nudgeApplicants(emails: string[]) {
   if (!wanted.length) return { sent: 0, skipped: 0 };
   const rows = await db.select().from(s.applicantSignups).where(inArray(s.applicantSignups.email, wanted));
   const recent = Date.now() - 20 * 3600_000;
-  const due = rows.filter((r) => !r.submittedAt && !(r.nudgedAt && r.nudgedAt.getTime() > recent));
+  const out = await optedOut(rows.map((r) => r.email));
+  const due = rows.filter((r) => !r.submittedAt && !out.has(r.email) && !(r.nudgedAt && r.nudgedAt.getTime() > recent));
   if (!due.length) return { sent: 0, skipped: wanted.length };
   const content = await nudgeContent();
-  const r = await sendEmails(due.map((x) => ({ to: x.email, subject: content.subject, html: renderEmail(content), text: renderText(content) })));
+  const r = await sendEmails(
+    due.map((x) => {
+      const c = { ...content, unsubscribeUrl: unsubscribeUrl(x.email) };
+      return { to: x.email, subject: c.subject, html: renderEmail(c), text: renderText(c), oneClickUnsubscribe: oneClickUrl(x.email) };
+    }),
+  );
   const failed = new Set(r.failures.map((f) => f.to));
   const ok = due.filter((x) => !failed.has(x.email)).map((x) => x.email);
   if (ok.length)
@@ -583,6 +593,6 @@ export async function nudgeApplicants(emails: string[]) {
       .update(s.applicantSignups)
       .set({ nudgedAt: new Date(), nudgeCount: sql`${s.applicantSignups.nudgeCount} + 1` })
       .where(inArray(s.applicantSignups.email, ok));
-  revalidatePath("/admin/shows");
+  revalidatePath("/admin/applications");
   return { sent: ok.length, skipped: wanted.length - ok.length };
 }

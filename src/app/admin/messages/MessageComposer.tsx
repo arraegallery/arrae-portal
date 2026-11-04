@@ -57,7 +57,7 @@ export function MessageComposer({ artists, shows, history, me, configured }: { a
 
   const message = { subject, heading, body, buttonLabel, buttonUrl };
   const sample = chosen[0]?.name ?? "Artist";
-  const previewHtml = renderEmail({ ...message, subject: personalize(subject, sample), heading: personalize(heading, sample), body: personalize(body || " ", sample) });
+  const previewHtml = renderEmail({ ...message, subject: personalize(subject, sample), heading: personalize(heading, sample), body: personalize(body || " ", sample), unsubscribeUrl: "#" });
   const ready = subject.trim() && body.trim().replace(/^Hi \{first_name\},$/, "").trim();
 
   const test = () =>
@@ -82,6 +82,7 @@ export function MessageComposer({ artists, shows, history, me, configured }: { a
         const parts = [`Sent to ${r.sent} artist${r.sent === 1 ? "" : "s"}.`];
         if (r.failed) parts.push(`${r.failed} didn't go through (${r.firstError}).`);
         if (r.skipped.length) parts.push(`Skipped (missing or shared email): ${r.skipped.join(", ")}.`);
+        if (r.unsubscribed.length) parts.push(`Skipped (unsubscribed): ${r.unsubscribed.join(", ")}.`);
         setStatus({ ok: !r.failed, text: parts.join(" ") });
         if (r.sent && !r.failed) {
           setSubject("");
@@ -220,7 +221,7 @@ export function MessageComposer({ artists, shows, history, me, configured }: { a
               <span className="text-muted">Message</span>
               <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10} className="mt-1 w-full rounded-md px-3 py-2 font-sans ring-1 ring-line" />
               <span className="mt-1 block text-xs text-muted">
-                Write <code>{"{first_name}"}</code> or <code>{"{name}"}</code> and each artist sees their own. Leave a blank line between paragraphs. Links work as typed.
+                Write <code>{"{first_name}"}</code> or <code>{"{name}"}</code> and each artist sees their own. Leave a blank line between paragraphs. Links work as typed. Each email ends with an Unsubscribe link, and anyone who unsubscribed is skipped automatically.
               </span>
             </label>
             <div className="grid gap-3 sm:grid-cols-2">

@@ -7,7 +7,7 @@ import { createShow, updateShow } from "../actions";
 import type { getShowsAdmin } from "@/lib/queries";
 
 type Show = Awaited<ReturnType<typeof getShowsAdmin>>[number];
-const TYPES = ["Volume", "Takeover", "ARRAE Finds"] as const;
+const TYPES = ["Volume", "Takeover"] as const;
 const input = "mt-0.5 w-full rounded-md bg-white px-2 py-1.5 text-sm text-ink ring-1 ring-line";
 
 export function ShowsManager({ shows }: { shows: Show[] }) {
