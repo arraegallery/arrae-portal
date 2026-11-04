@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireTeam } from "@/lib/team";
-import { getNewSubmissionCount, getShows, getUnreadCount } from "@/lib/queries";
+import { getNewSubmissionCount, getUnreadCount } from "@/lib/queries";
 import { SearchBox } from "@/components/SearchBox";
 import { NavMenu, NavTop } from "@/components/NavMenu";
 import { assistantFor } from "@/lib/schedule";
@@ -10,11 +10,9 @@ export const dynamic = "force-dynamic";
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { email, role } = await requireTeam();
   const owner = role === "owner";
-  const shows = await getShows();
   const unread = await getUnreadCount();
   const fresh = owner ? await getNewSubmissionCount(email) : 0;
   const onSchedule = !owner && !!(await assistantFor(email));
-  const volumes = shows.filter((s) => s.type === "Volume").slice(-2).reverse();
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur">
@@ -29,10 +27,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                 <NavMenu
                   label="Shows"
                   items={[
-                    ...volumes.map((s) => ({ href: `/admin/review/${s.id}`, label: `${s.name} review` })),
-                    { href: "/admin/sandbox", label: "Sandbox", hint: "plan a show" },
-                    ...shows.filter((s) => !volumes.includes(s)).map((s, i) => ({ href: `/admin/review/${s.id}`, label: s.name, hint: s.type, divider: i === 0 })),
-                    { href: "/admin/shows", label: "Show settings & applications", divider: true },
+                    { href: "/admin/sandbox", label: "Curate", hint: "Sandbox" },
+                    { href: "/admin/review", label: "Reviews", hint: "Volumes" },
+                    { href: "/admin/takeovers", label: "Takeovers" },
+                    { href: "/admin/shows", label: "Show settings", divider: true },
                   ]}
                 />
                 <NavTop href="/admin/new" badge={fresh} tone="red">
@@ -42,6 +40,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                   label="Artists"
                   items={[
                     { href: "/admin/artists", label: "All artists" },
+                    { href: "/admin/applications", label: "Applications", hint: "apply page & reminders" },
                     { href: "/admin/waitlist", label: "Waitlist" },
                     { href: "/admin/agreements", label: "Agreements" },
                     { href: "/admin/documents", label: "Documents" },

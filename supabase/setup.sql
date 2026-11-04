@@ -454,4 +454,13 @@ INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('8dea69f
 ALTER TABLE "applicant_signups" ADD COLUMN "form_draft" jsonb;
 ALTER TABLE "applicant_signups" ADD COLUMN "draft_saved_at" timestamp with time zone;
 INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('6552dc43bc03b6f3bdd1ae1df24b4c25925b8269defd3fe847595a42c6afed74', 1793748123190);
+
+-- 0017_email_opt_outs
+CREATE TABLE "email_opt_outs" (
+	"email" text PRIMARY KEY NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"source" text
+);
+ALTER TABLE "email_opt_outs" ENABLE ROW LEVEL SECURITY;
+INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('61211ccedf56ce72bc0031efeec379f5b2dda2dc4e186c22e5b02e8303354d09', 1793786732157);
 COMMIT;

@@ -15,6 +15,8 @@ export type EmailContent = {
   body: string;
   buttonLabel?: string;
   buttonUrl?: string;
+  /** Adds an unsubscribe line to the footer (announcements and reminders only). */
+  unsubscribeUrl?: string;
 };
 
 const esc = (t: string) =>
@@ -87,7 +89,14 @@ export function renderEmail(c: EmailContent) {
           </table>
           <p style="margin:20px 0 0 0;font-family:${SANS};font-size:12px;color:#6f6a62;">
             ARRAE Gallery · <a href="https://arraegallery.com" style="color:#6f6a62;">arraegallery.com</a>
-          </p>
+          </p>${
+            c.unsubscribeUrl
+              ? `
+          <p style="margin:8px 0 0 0;font-family:${SANS};font-size:12px;color:#6f6a62;">
+            Don&rsquo;t want announcements like this? <a href="${esc(c.unsubscribeUrl)}" style="color:#6f6a62;">Unsubscribe</a>
+          </p>`
+              : ""
+          }
         </td>
       </tr>
     </table>
@@ -102,12 +111,20 @@ export function renderText(c: EmailContent) {
     c.body.trim(),
     c.buttonLabel && c.buttonUrl ? `${c.buttonLabel}: ${c.buttonUrl}` : "",
     "ARRAE Gallery · arraegallery.com",
+    c.unsubscribeUrl ? `Unsubscribe from announcements: ${c.unsubscribeUrl}` : "",
   ]
     .filter(Boolean)
     .join("\n\n");
 }
 
-type Outgoing = { to: string; subject: string; html: string; text: string };
+type Outgoing = {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  /** The one-click unsubscribe address, so Gmail and Apple Mail show their own Unsubscribe button. */
+  oneClickUnsubscribe?: string;
+};
 
 /**
  * Sends each message on its own (so nobody sees anyone else's address), 100 per
@@ -137,6 +154,14 @@ export async function sendEmails(messages: Outgoing[]) {
             subject: m.subject,
             html: m.html,
             text: m.text,
+            ...(m.oneClickUnsubscribe
+              ? {
+                  headers: {
+                    "List-Unsubscribe": `<${m.oneClickUnsubscribe}>`,
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                  },
+                }
+              : {}),
           })),
         ),
         signal: AbortSignal.timeout(30_000),

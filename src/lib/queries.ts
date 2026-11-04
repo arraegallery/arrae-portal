@@ -44,8 +44,9 @@ export type BoardEntry = {
   notes: BoardNote[];
 };
 
+/** Volumes and Takeovers. ARRAE Finds is a Shopify collection, not a show, so it's left out. */
 export async function getShows() {
-  return db.select().from(s.shows).orderBy(asc(s.shows.type), asc(s.shows.name));
+  return db.select().from(s.shows).where(ne(s.shows.type, "ARRAE Finds")).orderBy(asc(s.shows.type), asc(s.shows.name));
 }
 
 export async function getBoard(showId: string) {
@@ -439,7 +440,7 @@ export async function getUnreadCount() {
 
 /** Every show with its settings and how many artists and works it has. */
 export async function getShowsAdmin() {
-  const shows = await db.select().from(s.shows).orderBy(desc(s.shows.createdAt));
+  const shows = await db.select().from(s.shows).where(ne(s.shows.type, "ARRAE Finds")).orderBy(desc(s.shows.createdAt));
   const apps = await db.select({ showId: s.applications.showId, status: s.applications.status }).from(s.applications);
   const works = await db.select({ showId: s.showWorks.showId, status: s.showWorks.status }).from(s.showWorks);
   return shows.map((x) => ({
@@ -510,4 +511,25 @@ export async function getRecentSubmissions(email: string) {
 export async function markSubmissionsSeen(email: string) {
   const value = new Date().toISOString();
   await db.insert(s.appSettings).values({ key: seenKey(email), value }).onConflictDoUpdate({ target: s.appSettings.key, set: { value } });
+}
+
+type ShowRow = Awaited<ReturnType<typeof getShows>>[number];
+
+/** Shows of one kind in menu order: Volumes I, II, III…; Takeovers newest first. */
+export function showsOfType(shows: ShowRow[], type: "Volume" | "Takeover") {
+  const list = shows.filter((x) => x.type === type);
+  if (type === "Takeover") return list.sort((a, b) => (b.opensOn ?? "").localeCompare(a.opensOn ?? "") || a.name.localeCompare(b.name));
+  return list;
+}
+
+/** Where Reviews and Takeovers open: the show taking submissions, else the one on view now, else the next one up, else the latest. */
+export function defaultShow(shows: ShowRow[], type: "Volume" | "Takeover") {
+  const list = showsOfType(shows, type);
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    list.find((x) => x.openForSubmissions) ??
+    list.find((x) => x.opensOn && x.opensOn <= today && (!x.closesOn || x.closesOn >= today)) ??
+    [...list].filter((x) => x.opensOn && x.opensOn > today).sort((a, b) => a.opensOn!.localeCompare(b.opensOn!))[0] ??
+    list.at(-1)
+  );
 }

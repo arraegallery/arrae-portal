@@ -1,6 +1,6 @@
 import { requireOwner } from "@/lib/team";
 import { notFound } from "next/navigation";
-import { getArtistList, getBoard, getSandboxWorkIds, getShows } from "@/lib/queries";
+import { getArtistList, getBoard, getSandboxWorkIds, getShows, showsOfType } from "@/lib/queries";
 import { ReviewBoard } from "./ReviewBoard";
 
 // Fail within a minute rather than spin for Vercel's five-minute ceiling.
@@ -14,6 +14,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
   if (!board) notFound();
   return <ReviewBoard show={{ id: board.show.id, name: board.show.name, type: board.show.type }} entries={board.entries} sandboxIds={sandboxIds}
       shows={shows.map((x) => ({ id: x.id, name: x.name }))}
+      sameType={board.show.type === "Volume" || board.show.type === "Takeover" ? showsOfType(shows, board.show.type).map((x) => ({ id: x.id, name: x.name })) : []}
       artists={artists}
       focusArtist={focusArtist}
       focusWork={focusWork}

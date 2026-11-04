@@ -296,6 +296,13 @@ export const applicantSignups = pgTable("applicant_signups", {
   draftSavedAt: timestamp("draft_saved_at", { withTimezone: true }),
 });
 
+/** People who unsubscribed from ARRAE announcements and reminders. Account emails (sign-in, messages, agreements) still go out. */
+export const emailOptOuts = pgTable("email_opt_outs", {
+  email: text("email").primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  source: text("source"),
+});
+
 /** Small key/value settings, such as the private calendar feed token. */
 export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),
