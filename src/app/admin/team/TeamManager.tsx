@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { addTeamMember, sendWelcome, setTeamAccess } from "./actions";
+import { addTeamMember, changeTeamEmail, sendWelcome, setTeamAccess } from "./actions";
 
 type Member = { email: string; name: string | null; addedBy: string | null; since: string; revoked: boolean; lastSeen: string | null };
 const seenFmt = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -18,6 +18,9 @@ export function TeamManager({ owners, members, configured }: { owners: string[];
   const [preferred, setPreferred] = useState("");
   const [welcome, setWelcome] = useState(true);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [fixing, setFixing] = useState<string | null>(null);
+  const [fixed, setFixed] = useState("");
+  const [fixResend, setFixResend] = useState(true);
   const [pending, start] = useTransition();
   const run = (fn: () => Promise<string | void>) =>
     start(async () => {
@@ -119,11 +122,62 @@ export function TeamManager({ owners, members, configured }: { owners: string[];
               )}
               <button
                 disabled={pending}
+                onClick={() => {
+                  setFixing(fixing === m.email ? null : m.email);
+                  setFixed(m.email);
+                }}
+                className={`${configured ? "" : "ml-auto "}rounded-md px-3 py-1 text-xs ring-1 ring-line hover:bg-paper`}
+              >
+                Edit email
+              </button>
+              <button
+                disabled={pending}
                 onClick={() => confirm(`Remove ${m.name ?? m.email}'s access? They'll be signed out of the portal right away.`) && run(() => setTeamAccess(m.email, false))}
-                className={`${configured ? "" : "ml-auto "}rounded-md px-3 py-1 text-xs text-rose-700 ring-1 ring-rose-200 hover:bg-rose-50`}
+                className="rounded-md px-3 py-1 text-xs text-rose-700 ring-1 ring-rose-200 hover:bg-rose-50"
               >
                 Remove access
               </button>
+              {fixing === m.email && (
+                <form
+                  className="flex w-full flex-wrap items-center gap-2 rounded-md bg-paper p-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    run(async () => {
+                      const r = await changeTeamEmail(m.email, fixed, configured && fixResend);
+                      if (!r.ok) throw new Error(r.error);
+                      setFixing(null);
+                      const to = fixed.trim().toLowerCase();
+                      return r.value.emailed ? `Email changed to ${to} and the invite was sent there.` : `Email changed to ${to}.`;
+                    });
+                  }}
+                >
+                  <label className="text-xs text-muted" htmlFor={`fix-${m.email}`}>
+                    Correct email
+                  </label>
+                  <input
+                    id={`fix-${m.email}`}
+                    type="email"
+                    required
+                    autoFocus
+                    value={fixed}
+                    onChange={(e) => setFixed(e.target.value)}
+                    className="min-w-0 flex-1 rounded-md bg-white px-2 py-1 text-sm ring-1 ring-line"
+                  />
+                  {configured && (
+                    <label className="flex items-center gap-1 text-xs">
+                      <input type="checkbox" checked={fixResend} onChange={(e) => setFixResend(e.target.checked)} />
+                      Send the invite to the new email
+                    </label>
+                  )}
+                  <button disabled={pending} className="rounded-md bg-ink px-3 py-1 text-xs text-white disabled:opacity-50">
+                    {pending ? "Saving…" : "Save"}
+                  </button>
+                  <button type="button" onClick={() => setFixing(null)} className="text-xs text-muted underline">
+                    Cancel
+                  </button>
+                  <p className="w-full text-xs text-muted">Their shifts, hours and schedule move to the new email. The old email stops working.</p>
+                </form>
+              )}
             </li>
           ))}
           {!active.length && <li className="p-3 text-sm text-muted">No team members yet.</li>}
