@@ -30,10 +30,14 @@ export async function sendSignInLink(email: string, origin: string, opts: { crea
   const type = data.properties.verification_type || "magiclink";
   const url = `${origin}/auth/confirm?token_hash=${encodeURIComponent(data.properties.hashed_token)}&type=${encodeURIComponent(type)}`;
   const apply = opts.purpose === "apply";
+  // A 6-digit code from the same token, typed on the sign-in page. It works when the link
+  // doesn't, for example when a mail app opens links in its own browser.
+  const code = data.properties.email_otp;
+  const codeLine = !apply && code ? `\n\nIf the button below doesn't work, type this code on the ARRAE sign-in page instead: ${code}` : "";
   const content = {
     subject: apply ? "Continue your ARRAE application" : "Your ARRAE sign-in link",
     heading: apply ? "Continue your application" : "Your sign-in link",
-    body: `${apply ? "Click the button below to continue your application to ARRAE Gallery." : "Click the button below to sign in to the ARRAE portal."} The link works once and expires in an hour. You can open it on any device.\n\nDidn't ask for this? You can ignore this email; nobody can sign in without the link.`,
+    body: `${apply ? "Click the button below to continue your application to ARRAE Gallery." : "Click the button below to sign in to the ARRAE portal."} The link works once and expires in an hour. You can open it on any device.${codeLine}\n\nDidn't ask for this? You can ignore this email; nobody can sign in without the link.`,
     buttonLabel: apply ? "Continue my application" : "Sign in to ARRAE",
     buttonUrl: url,
   };
