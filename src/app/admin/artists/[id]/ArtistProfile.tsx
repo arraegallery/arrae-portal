@@ -301,6 +301,7 @@ function describeChange(c: Change) {
   const label = TRACKED_FIELDS[c.field as keyof typeof TRACKED_FIELDS] ?? c.field;
   if (c.field === "priceUsd") return `Price ${money(c.oldValue)} → ${money(c.newValue)}`;
   if (c.field === "soldAt") return c.newValue ? "Marked sold" : "Marked available";
+  if (c.field === "archivedAt") return c.newValue ? "Archived" : "Restored from archive";
   if (c.field === "description") return "Description edited";
   return `${label} “${c.oldValue ?? "—"}” → “${c.newValue ?? "—"}”`;
 }
@@ -368,6 +369,7 @@ function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: W
       unit: work.unit,
       description: work.description ?? "",
       sold: work.sold ? "yes" : "",
+      archived: work.archived ? "yes" : "",
     });
     setEditing(true);
   };
@@ -377,7 +379,7 @@ function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: W
       try {
         await updateWork(work.id, draft);
         const n = (v: string) => (v.trim() ? parseAmount(v) : null);
-        setWork({ ...work, ...draft, sold: !!draft.sold, price: n(draft.price), width: n(draft.width), height: n(draft.height), depth: n(draft.depth) });
+        setWork({ ...work, ...draft, sold: !!draft.sold, archived: !!draft.archived, price: n(draft.price), width: n(draft.width), height: n(draft.height), depth: n(draft.depth) });
         setEditing(false);
       } catch (e) {
         setError((e as Error).message);
@@ -406,6 +408,14 @@ function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: W
                   {formatSize(work)} · {formatPrice(work.price)}
                   {work.sold ? " · Sold" : ""}
                 </p>
+                {work.archived && (
+                  <span
+                    title={work.archivedBy ? `Archived by ${work.archivedBy}` : "Archived"}
+                    className="mt-1 inline-block rounded bg-paper px-1.5 py-0.5 text-[11px] text-muted ring-1 ring-line"
+                  >
+                    {work.archivedByArtist ? "Archived by artist" : "Archived"}
+                  </span>
+                )}
               </div>
               <div className="ml-auto flex shrink-0 gap-3 text-xs text-muted">
                 {owner && (
@@ -590,6 +600,10 @@ function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: W
             <label className="col-span-6 flex items-center gap-2 text-sm">
               <input type="checkbox" checked={!!draft.sold} onChange={(e) => setDraft({ ...draft, sold: e.target.checked ? "yes" : "" })} />
               Sold <span className="text-xs text-muted">(sold works can&rsquo;t be put forward for new shows)</span>
+            </label>
+            <label className="col-span-6 flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={!!draft.archived} onChange={(e) => setDraft({ ...draft, archived: e.target.checked ? "yes" : "" })} />
+              Archived <span className="text-xs text-muted">(hidden from the artist&rsquo;s open calls, kept on file; can be sold too)</span>
             </label>
             <div className="col-span-6 flex items-center gap-2">
               {error && <span className="text-xs text-rose-700">{error}</span>}

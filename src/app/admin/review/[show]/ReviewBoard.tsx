@@ -412,7 +412,9 @@ function WorkCard({
             <p className="truncate font-medium">{work.title}</p>
             <p className="truncate text-xs text-muted">
               {formatSize(work)} · {formatPrice(work.price)}
+              {work.sold ? " · Sold" : ""}
             </p>
+            {work.archived && <span className="mt-0.5 inline-block rounded bg-paper px-1.5 py-0.5 text-[10px] text-muted ring-1 ring-line">Archived</span>}
           </div>
           <Chip status={work.status} />
         </div>

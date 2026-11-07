@@ -60,6 +60,7 @@ export async function getStudio(artistIds: string[]) {
       unit: w.unit,
       sizeAsEntered: w.sizeAsEntered,
       sold: !!w.soldAt,
+      archived: !!w.archivedAt,
       photosRequested: !!w.photosRequestedAt,
       photosRequestNote: w.photosRequestNote,
       image: imageByWork.get(w.id) ?? null,

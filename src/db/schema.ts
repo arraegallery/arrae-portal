@@ -116,7 +116,16 @@ export const works = pgTable("works", {
   shopifyReviewedAt: timestamp("shopify_reviewed_at", { withTimezone: true }),
   shopifyProductId: text("shopify_product_id"),
   shopifyHandle: text("shopify_handle"),
+  /** Set when the work sold (by ARRAE now, by the Shopify sync later). Independent of archivedAt. */
   soldAt: timestamp("sold_at", { withTimezone: true }),
+  /**
+   * Set when the artist (or ARRAE) archives the work: hidden from new open calls and tucked
+   * away in the studio, but never deleted. A work can be both archived and sold; neither
+   * clears the other, so a Shopify sync can set soldAt without caring about this.
+   */
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  /** Email of whoever archived it. */
+  archivedBy: text("archived_by"),
   duplicateOf: text("duplicate_of"),
   submittedOn: date("submitted_on"),
   airtableRecordId: text("airtable_record_id"),

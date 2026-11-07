@@ -11,5 +11,6 @@ export const TRACKED_FIELDS = {
   depth: "Depth",
   unit: "Unit",
   soldAt: "Sold",
+  archivedAt: "Archived",
 } as const;
 export type TrackedField = keyof typeof TRACKED_FIELDS;

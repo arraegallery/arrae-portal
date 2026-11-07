@@ -463,4 +463,9 @@ CREATE TABLE "email_opt_outs" (
 );
 ALTER TABLE "email_opt_outs" ENABLE ROW LEVEL SECURITY;
 INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('61211ccedf56ce72bc0031efeec379f5b2dda2dc4e186c22e5b02e8303354d09', 1793786732157);
+
+-- 0018_work_archive
+ALTER TABLE "works" ADD COLUMN "archived_at" timestamp with time zone;
+ALTER TABLE "works" ADD COLUMN "archived_by" text;
+INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at) VALUES ('1d72958fe3dbe7fb0ed9fc05365d14edd1a12687e658ba83f3445939598c1519', 1794059224016);
 COMMIT;

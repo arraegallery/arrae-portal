@@ -8,7 +8,7 @@ import { uploadPhotos } from "@/lib/photo-upload";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { Studio } from "@/lib/studio";
 import type { getStudioBookings } from "@/lib/logistics";
-import { bookMyTime, cancelMyBooking, addMyWorkPhotos, getMyWorkPhotos, makeMyMainPhoto, prepareMyPhotoUploads, prepareUploads, putForwardWorks, removeMyPhoto, submitNewWork, updateMyWork, withdrawWork } from "./actions";
+import { bookMyTime, cancelMyBooking, addMyWorkPhotos, archiveMyWork, getMyWorkPhotos, makeMyMainPhoto, prepareMyPhotoUploads, prepareUploads, putForwardWorks, removeMyPhoto, submitNewWork, updateMyWork, withdrawWork } from "./actions";
 import { PhotoManager } from "@/components/PhotoManager";
 
 type Work = Studio["works"][number];
@@ -34,6 +34,9 @@ export function StudioHome({
   agreement: { id: string; signed: boolean } | null;
 }) {
   const first = name.trim().split(/\s+/)[0];
+  const active = studio.works.filter((w) => !w.archived);
+  const archived = studio.works.filter((w) => w.archived);
+  const [showArchive, setShowArchive] = useState(false);
   return (
     <main className="mx-auto max-w-5xl px-4 pb-24">
       <section className="py-8">
@@ -87,16 +90,35 @@ export function StudioHome({
       <section className="mt-12">
         <h2 className="font-display text-2xl">Your works</h2>
         <p className="mt-1 text-sm text-muted">Keep titles, sizes and prices up to date here. ARRAE sees every change.</p>
-        {studio.works.length === 0 ? (
-          <p className="mt-6 text-sm text-muted">No works yet.</p>
+        {active.length === 0 ? (
+          <p className="mt-6 text-sm text-muted">{archived.length ? "Every work is in your archive." : "No works yet."}</p>
         ) : (
           <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {studio.works.map((w) => (
+            {active.map((w) => (
               <WorkCard key={w.id} work={w} />
             ))}
           </ul>
         )}
       </section>
+
+      {archived.length > 0 && (
+        <section className="mt-12">
+          <button onClick={() => setShowArchive(!showArchive)} className="flex items-baseline gap-2 text-left">
+            <h2 className="font-display text-2xl">Archive</h2>
+            <span className="text-sm text-muted">
+              {archived.length} work{archived.length === 1 ? "" : "s"} · {showArchive ? "Hide" : "Show"}
+            </span>
+          </button>
+          <p className="mt-1 text-sm text-muted">Archived works stay on file with ARRAE but aren&rsquo;t offered for new open calls. Restore one any time.</p>
+          {showArchive && (
+            <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {archived.map((w) => (
+                <WorkCard key={w.id} work={w} />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
     </main>
   );
 }
@@ -108,7 +130,7 @@ function OpenCall({ show, works }: { show: OpenShow; works: Work[] }) {
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
   const inShow = works.filter((w) => w.shows.some((x) => x.showId === show.id));
-  const eligible = works.filter((w) => !w.sold && !w.shows.some((x) => x.showId === show.id));
+  const eligible = works.filter((w) => !w.sold && !w.archived && !w.shows.some((x) => x.showId === show.id));
 
   const putForward = () =>
     start(async () => {
@@ -342,6 +364,15 @@ function WorkCard({ work: initial }: { work: Work }) {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const setArchived = (archived: boolean) =>
+    start(async () => {
+      setError(null);
+      const r = await archiveMyWork(work.id, archived);
+      if (!r.ok) return setError(r.error);
+      setConfirmArchive(false);
+      router.refresh();
+    });
   const begin = () => {
     setDraft({
       title: work.title,
@@ -383,18 +414,49 @@ function WorkCard({ work: initial }: { work: Work }) {
           <>
             <div className="flex items-start gap-2">
               <p className="font-medium">{work.title}</p>
-              {!work.sold && (
-                <span className="ml-auto flex shrink-0 gap-3 text-xs text-muted">
-                  <button onClick={() => setPhotos(!photos)} className="hover:underline">
-                    Photos
+              <span className="ml-auto flex shrink-0 gap-3 text-xs text-muted">
+                {work.archived ? (
+                  <button onClick={() => setArchived(false)} disabled={pending} className="hover:underline disabled:opacity-50">
+                    {pending ? "Restoring…" : "Restore"}
                   </button>
-                  <button onClick={begin} className="hover:underline">
-                    Edit
-                  </button>
-                </span>
-              )}
+                ) : (
+                  <>
+                    {!work.sold && (
+                      <>
+                        <button onClick={() => setPhotos(!photos)} className="hover:underline">
+                          Photos
+                        </button>
+                        <button onClick={begin} className="hover:underline">
+                          Edit
+                        </button>
+                      </>
+                    )}
+                    <button onClick={() => setConfirmArchive(!confirmArchive)} className="hover:underline">
+                      Archive
+                    </button>
+                  </>
+                )}
+              </span>
             </div>
-            {work.photosRequested && !work.sold && (
+            {confirmArchive && !work.archived && (
+              <div className="mt-2 rounded-md bg-paper p-2 text-xs ring-1 ring-line">
+                <p>
+                  Move this work to your archive? It won&rsquo;t be offered for new open calls
+                  {work.shows.some((x) => x.canWithdraw) ? " and it will come out of the open call it's in now" : ""}. Nothing is deleted, and you can
+                  restore it any time.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <button onClick={() => setArchived(true)} disabled={pending} className="rounded-md bg-ink px-2.5 py-1 text-white disabled:opacity-50">
+                    {pending ? "Archiving…" : "Archive"}
+                  </button>
+                  <button onClick={() => setConfirmArchive(false)} className="rounded-md px-2.5 py-1 ring-1 ring-line">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+            {error && !editing && <p className="mt-2 text-xs text-rose-700">{error}</p>}
+            {work.photosRequested && !work.sold && !work.archived && (
               <div className="mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-900 ring-1 ring-amber-200">
                 <p className="font-medium">ARRAE asked for better photos of this work.</p>
                 {work.photosRequestNote && <p className="mt-1 whitespace-pre-line">{work.photosRequestNote}</p>}
@@ -429,6 +491,7 @@ function WorkCard({ work: initial }: { work: Work }) {
               {work.year || work.medium ? " · " : ""}
               {formatSize(work)} · {formatPrice(work.price)}
               {work.sold ? " · Sold" : ""}
+              {work.archived ? " · Archived" : ""}
             </p>
             <div className="mt-2 flex flex-wrap gap-1">
               {work.shows.map((x) => (
