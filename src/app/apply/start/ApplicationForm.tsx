@@ -270,7 +270,7 @@ export function ApplicationForm({ shows, prefill, draft }: { shows: Show[]; pref
               <select value={w.category} onChange={(e) => setWork(i, { category: e.target.value })} className={input}>
                 <option value="">Choose…</option>
                 {CATEGORIES.map((c) => (
-                  <option key={c}>{c}</option>
+                  <option key={c} value={c}>{c}</option>
                 ))}
               </select>
             </label>

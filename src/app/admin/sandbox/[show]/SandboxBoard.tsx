@@ -378,7 +378,7 @@ export function SandboxBoard({
             <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-32 rounded-md px-2 py-1.5 ring-1 ring-line">
               <option value="all">All media</option>
               {categories.map((c) => (
-                <option key={c}>{c}</option>
+                <option key={c} value={c}>{c}</option>
               ))}
             </select>
             <input
