@@ -8,7 +8,7 @@ import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage
 import type { SandboxWork } from "@/lib/queries";
 import { STATUS_TONE } from "@/lib/status";
 import { ShowTabs } from "@/components/ShowTabs";
-import type { WallSetup } from "@/lib/walls";
+import type { WallLayout, WallSetup } from "@/lib/walls";
 import { ScaleWall } from "./ScaleWall";
 
 type Show = { id: string; name: string; type: string };
@@ -22,12 +22,14 @@ export function SandboxBoard({
   sandbox: initialSandbox,
   works,
   walls,
+  layout,
 }: {
   show: Show;
   shows: Show[];
   sandbox: { workId: string; note: string | null }[];
   works: SandboxWork[];
   walls: WallSetup;
+  layout: WallLayout;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -262,7 +264,7 @@ export function SandboxBoard({
               {selected.size
                 ? `${selected.size} selected`
                 : view === "scale"
-                  ? "Click a work to select it, drag to swap places."
+                  ? "Drag works anywhere on the wall. Click one to select it."
                   : "Tip: drag cards to reorder, or drag works in from the right."}
             </span>
             <div className="ml-auto flex gap-2">
@@ -295,15 +297,10 @@ export function SandboxBoard({
             <ScaleWall
               items={items}
               setup={walls}
+              layout={layout}
+              showId={show.id}
               selected={selected}
-              dragging={dragging}
               onToggle={toggleSelect}
-              onDragStartWork={(e, id) => {
-                e.dataTransfer.setData("text/work", id);
-                setDragging(id);
-              }}
-              onDragEndWork={() => setDragging(null)}
-              onDropOnWork={(e, id) => onDropAt(e, id)}
             />
           ) : (
             <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">

@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db, schema as s } from "@/db";
 import { signedImageUrls } from "./images";
 import type { ApplicationStatus, WorkStatus } from "./status";
-import { WALLS_KEY, parseWallSetup } from "./walls";
+import { WALLS_KEY, layoutKey, parseLayout, parseWallSetup } from "./walls";
 
 export type BoardImage = { id: string; thumb: string | null; full: string | null; w: number | null; h: number | null };
 export type BoardWork = {
@@ -550,4 +550,10 @@ export function defaultShow(shows: ShowRow[], type: "Volume" | "Takeover") {
 export async function getWallSetup() {
   const [row] = await db.select().from(s.appSettings).where(eq(s.appSettings.key, WALLS_KEY));
   return parseWallSetup(row?.value);
+}
+
+/** Where each work was dragged on the sandbox's to-scale wall for one show. */
+export async function getSandboxLayout(showId: string) {
+  const [row] = await db.select().from(s.appSettings).where(eq(s.appSettings.key, layoutKey(showId)));
+  return parseLayout(row?.value);
 }

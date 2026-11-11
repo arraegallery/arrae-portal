@@ -14,7 +14,7 @@ import { recordWorkChanges, TRACKED_FIELDS } from "@/lib/changes";
 import { attachPhotos, createPhotoSlots, listPhotos, makeMainPhoto, removePhoto, worksByIds, type UploadedPhoto } from "@/lib/photos";
 import { personalize, renderEmail, renderText, sendEmails, type EmailContent } from "@/lib/email";
 import { oneClickUrl, optedOut, unsubscribeUrl } from "@/lib/unsubscribe";
-import { WALLS_KEY, parseWallSetup, type WallSetup } from "@/lib/walls";
+import { WALLS_KEY, layoutKey, parseLayout, parseWallSetup, type WallLayout, type WallSetup } from "@/lib/walls";
 
 async function log(entry: { artistId?: string | null; workId?: string | null; showId?: string | null; kind: string; body: string; actor: string }) {
   await db.insert(s.activity).values(entry);
@@ -117,6 +117,20 @@ export async function saveWallSetup(setup: WallSetup) {
   const value = JSON.stringify(parseWallSetup(JSON.stringify({ ...setup, measured: true })));
   await db.insert(s.appSettings).values({ key: WALLS_KEY, value }).onConflictDoUpdate({ target: s.appSettings.key, set: { value } });
   revalidatePath("/admin/sandbox", "layout");
+}
+
+/** Saves where every work sits on the sandbox's to-scale wall for one show; null clears it so works line up again. */
+export async function saveSandboxLayout(showId: string, layout: WallLayout | null) {
+  await requireOwner();
+  const key = layoutKey(showId);
+  if (!layout) {
+    await db.delete(s.appSettings).where(eq(s.appSettings.key, key));
+    return;
+  }
+  const clean = parseLayout(JSON.stringify(layout));
+  for (const id of Object.keys(clean)) clean[id] = { wall: clean[id].wall, x: Math.round(clean[id].x * 2) / 2, y: Math.round(clean[id].y * 2) / 2 };
+  const value = JSON.stringify(clean);
+  await db.insert(s.appSettings).values({ key, value }).onConflictDoUpdate({ target: s.appSettings.key, set: { value } });
 }
 
 export async function addToSandbox(showId: string, workId: string) {

@@ -17,7 +17,7 @@ export type WallSetup = {
 };
 
 export const DEFAULT_WALLS: WallSetup = {
-  walls: [{ name: "Wall 1", width: 240, height: 120 }],
+  walls: [{ name: "Wall 1", width: 240, height: 96 }],
   gap: 4,
   center: 57,
   measured: false,
@@ -33,13 +33,11 @@ export function parseWallSetup(raw: string | null | undefined): WallSetup {
   if (!raw) return DEFAULT_WALLS;
   try {
     const v = JSON.parse(raw) as Partial<WallSetup>;
-    const walls = (Array.isArray(v.walls) ? v.walls : [])
-      .slice(0, 30)
-      .map((w, i) => ({
-        name: String(w?.name ?? "").slice(0, 60) || `Wall ${i + 1}`,
-        width: num(w?.width, 12, 2400, 240),
-        height: num(w?.height, 12, 600, 120),
-      }));
+    const walls = (Array.isArray(v.walls) ? v.walls : []).slice(0, 30).map((w, i) => ({
+      name: String(w?.name ?? "").slice(0, 60) || `Wall ${i + 1}`,
+      width: num(w?.width, 12, 2400, 240),
+      height: num(w?.height, 12, 600, 96),
+    }));
     return {
       walls: walls.length ? walls : DEFAULT_WALLS.walls,
       gap: num(v.gap, 0, 60, DEFAULT_WALLS.gap),
@@ -90,8 +88,21 @@ export function realSize(w: Sized): { width: number; height: number } | null {
 /** Stand-in size for a work with no measurements, so it still shows on the wall. */
 export const UNKNOWN_SIZE = { width: 12, height: 12 };
 
-export type Placed<T> = { item: T; x: number; y: number; width: number; height: number; known: boolean };
-export type HungWall<T> = { wall: Wall; overflow: boolean; placed: Placed<T>[]; used: number; free: number };
+export type Placed<T> = {
+  item: T;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  known: boolean;
+};
+export type HungWall<T> = {
+  wall: Wall;
+  overflow: boolean;
+  placed: Placed<T>[];
+  used: number;
+  free: number;
+};
 
 /**
  * Hangs works in order, one line per wall, centred at `center` inches, moving on to the next
@@ -99,11 +110,23 @@ export type HungWall<T> = { wall: Wall; overflow: boolean; placed: Placed<T>[]; 
  * doesn't fit on any wall goes on extra "overflow" walls the size of the last real one.
  */
 export function hangWorks<T extends Sized>(items: T[], setup: WallSetup): HungWall<T>[] {
-  const out: { wall: Wall; overflow: boolean; items: { item: T; width: number; height: number; known: boolean }[] }[] = [];
+  const out: {
+    wall: Wall;
+    overflow: boolean;
+    items: { item: T; width: number; height: number; known: boolean }[];
+  }[] = [];
   const last = setup.walls[setup.walls.length - 1];
   let wi = 0;
   const wallAt = (i: number) =>
-    i < setup.walls.length ? { wall: setup.walls[i], overflow: false } : { wall: { ...last, name: `Doesn't fit yet ${i - setup.walls.length + 1}` }, overflow: true };
+    i < setup.walls.length
+      ? { wall: setup.walls[i], overflow: false }
+      : {
+          wall: {
+            ...last,
+            name: `Doesn't fit yet ${i - setup.walls.length + 1}`,
+          },
+          overflow: true,
+        };
   let current = { ...wallAt(0), items: [] as (typeof out)[number]["items"] };
   out.push(current);
   const runWidth = (list: { width: number }[]) => list.reduce((s, x) => s + x.width, 0) + setup.gap * (list.length + 1);
@@ -130,10 +153,46 @@ export function hangWorks<T extends Sized>(items: T[], setup: WallSetup): HungWa
     let x = space;
     const placed = list.map((p) => {
       const y = Math.max(0, Math.min(wall.height - p.height, setup.center - p.height / 2));
-      const at = { item: p.item, x, y, width: p.width, height: p.height, known: p.known };
+      const at = {
+        item: p.item,
+        x,
+        y,
+        width: p.width,
+        height: p.height,
+        known: p.known,
+      };
       x += p.width + space;
       return at;
     });
-    return { wall, overflow, placed, used, free: Math.max(0, wall.width - used) };
+    return {
+      wall,
+      overflow,
+      placed,
+      used,
+      free: Math.max(0, wall.width - used),
+    };
   });
+}
+
+/** Where a work was dragged to on the to-scale wall: wall index, and inches from the wall's left edge and from the floor to the work's bottom edge. */
+export type WallSpot = { wall: number; x: number; y: number };
+export type WallLayout = Record<string, WallSpot>;
+
+export const layoutKey = (showId: string) => `sandbox_layout:${showId}`;
+
+export function parseLayout(raw: string | null | undefined): WallLayout {
+  if (!raw) return {};
+  try {
+    const v = JSON.parse(raw) as Record<string, Partial<WallSpot>>;
+    const out: WallLayout = {};
+    for (const [id, s] of Object.entries(v ?? {})) {
+      const wall = Number(s?.wall);
+      const x = Number(s?.x);
+      const y = Number(s?.y);
+      if ([wall, x, y].every(Number.isFinite) && wall >= 0 && wall < 60) out[id] = { wall: Math.floor(wall), x, y };
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
