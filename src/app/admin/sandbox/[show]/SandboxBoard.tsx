@@ -8,6 +8,8 @@ import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage
 import type { SandboxWork } from "@/lib/queries";
 import { STATUS_TONE } from "@/lib/status";
 import { ShowTabs } from "@/components/ShowTabs";
+import type { WallLayout, WallSetup } from "@/lib/walls";
+import { ScaleWall } from "./ScaleWall";
 
 type Show = { id: string; name: string; type: string };
 type Source = "all" | "show" | "waitlist" | "roster";
@@ -19,11 +21,15 @@ export function SandboxBoard({
   shows,
   sandbox: initialSandbox,
   works,
+  walls,
+  layout,
 }: {
   show: Show;
   shows: Show[];
   sandbox: { workId: string; note: string | null }[];
   works: SandboxWork[];
+  walls: WallSetup;
+  layout: WallLayout;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -42,6 +48,26 @@ export function SandboxBoard({
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropHint, setDropHint] = useState(false);
   const [openNote, setOpenNote] = useState<string | null>(null);
+  // "cards" or the to-scale wall; remembered on this computer.
+  const [view, setView] = useState<"cards" | "scale">("cards");
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("sandbox-view") === "scale") setView("scale");
+    } catch {}
+  }, []);
+  function chooseView(v: "cards" | "scale") {
+    setView(v);
+    try {
+      localStorage.setItem("sandbox-view", v);
+    } catch {}
+  }
+  const toggleSelect = (id: string) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
 
   // Picker filters
   const [query, setQuery] = useState("");
@@ -222,7 +248,25 @@ export function SandboxBoard({
           className={`min-h-[60vh] rounded-xl border-2 border-dashed p-4 transition ${dropHint ? "border-ink/40 bg-[#ebe6dd]" : "border-[#d9d2c5] bg-[#f1ede6]"}`}
         >
           <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-muted">{selected.size ? `${selected.size} selected` : "Tip: drag cards to reorder, or drag works in from the right."}</span>
+            <div className="flex rounded-md bg-white p-0.5 ring-1 ring-line" role="group" aria-label="Wall view">
+              {(
+                [
+                  ["cards", "Cards"],
+                  ["scale", "To scale"],
+                ] as const
+              ).map(([v, label]) => (
+                <button key={v} onClick={() => chooseView(v)} className={`rounded px-2.5 py-1 ${view === v ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span className="text-muted">
+              {selected.size
+                ? `${selected.size} selected`
+                : view === "scale"
+                  ? "Drag works anywhere on the wall. Click one to select it."
+                  : "Tip: drag cards to reorder, or drag works in from the right."}
+            </span>
             <div className="ml-auto flex gap-2">
               {selected.size > 0 && (
                 <>
@@ -249,6 +293,15 @@ export function SandboxBoard({
               <p className="font-display text-2xl text-ink">An empty wall</p>
               <p className="mt-1 max-w-sm text-sm">Drag works here from the right, or click + on any of them. You can also add works from the review board.</p>
             </div>
+          ) : view === "scale" ? (
+            <ScaleWall
+              items={items}
+              setup={walls}
+              layout={layout}
+              showId={show.id}
+              selected={selected}
+              onToggle={toggleSelect}
+            />
           ) : (
             <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
               {items.map((w) => {
@@ -281,14 +334,7 @@ export function SandboxBoard({
                       />
                     </div>
                     <button
-                      onClick={() =>
-                        setSelected((s) => {
-                          const n = new Set(s);
-                          if (n.has(w.id)) n.delete(w.id);
-                          else n.add(w.id);
-                          return n;
-                        })
-                      }
+                      onClick={() => toggleSelect(w.id)}
                       aria-label={isSel ? "Unselect" : "Select"}
                       className={`absolute left-2 top-2 h-6 w-6 rounded-full text-xs ring-1 ${isSel ? "bg-ink text-white ring-ink" : "bg-white/90 ring-line opacity-0 group-hover:opacity-100"}`}
                     >
@@ -412,6 +458,9 @@ export function SandboxBoard({
                 <div className="px-1.5 py-1">
                   <p className="truncate text-[11px] text-muted">{w.artistName}</p>
                   <p className="truncate text-xs">{w.title}</p>
+                  <p className="truncate text-[11px] text-muted" title={formatSize(w)}>
+                    {w.width && w.height ? formatSize(w) : <span className="italic">No size</span>}
+                  </p>
                   <p className="truncate text-[11px] text-muted">{formatPrice(w.price)}</p>
                 </div>
                 <button
