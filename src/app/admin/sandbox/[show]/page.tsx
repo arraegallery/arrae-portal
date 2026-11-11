@@ -1,6 +1,6 @@
 import { requireOwner } from "@/lib/team";
 import { notFound } from "next/navigation";
-import { getSandbox, getShows } from "@/lib/queries";
+import { getSandbox, getShows, getWallSetup } from "@/lib/queries";
 import { SandboxBoard } from "./SandboxBoard";
 
 // The sandbox loads every work in the collection; give it room on Vercel.
@@ -10,7 +10,7 @@ export default async function SandboxPage({ params }: { params: Promise<{ show: 
   await requireOwner();
   const { show } = await params;
   const started = Date.now();
-  const [data, shows] = await Promise.all([getSandbox(show), getShows()]);
+  const [data, shows, walls] = await Promise.all([getSandbox(show), getShows(), getWallSetup()]);
   console.log(`sandbox ${show}: data ready in ${Date.now() - started}ms, ${data?.works.length ?? 0} works`);
   if (!data) notFound();
   return (
@@ -19,6 +19,7 @@ export default async function SandboxPage({ params }: { params: Promise<{ show: 
       shows={shows.map((s) => ({ id: s.id, name: s.name, type: s.type }))}
       sandbox={data.sandbox}
       works={data.works}
+      walls={walls}
     />
   );
 }

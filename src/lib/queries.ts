@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db, schema as s } from "@/db";
 import { signedImageUrls } from "./images";
 import type { ApplicationStatus, WorkStatus } from "./status";
+import { WALLS_KEY, parseWallSetup } from "./walls";
 
 export type BoardImage = { id: string; thumb: string | null; full: string | null; w: number | null; h: number | null };
 export type BoardWork = {
@@ -543,4 +544,10 @@ export function defaultShow(shows: ShowRow[], type: "Volume" | "Takeover") {
     [...list].filter((x) => x.opensOn && x.opensOn > today).sort((a, b) => a.opensOn!.localeCompare(b.opensOn!))[0] ??
     list.at(-1)
   );
+}
+
+/** The gallery walls used by the sandbox's to-scale view. */
+export async function getWallSetup() {
+  const [row] = await db.select().from(s.appSettings).where(eq(s.appSettings.key, WALLS_KEY));
+  return parseWallSetup(row?.value);
 }

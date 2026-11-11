@@ -14,6 +14,7 @@ import { recordWorkChanges, TRACKED_FIELDS } from "@/lib/changes";
 import { attachPhotos, createPhotoSlots, listPhotos, makeMainPhoto, removePhoto, worksByIds, type UploadedPhoto } from "@/lib/photos";
 import { personalize, renderEmail, renderText, sendEmails, type EmailContent } from "@/lib/email";
 import { oneClickUrl, optedOut, unsubscribeUrl } from "@/lib/unsubscribe";
+import { WALLS_KEY, parseWallSetup, type WallSetup } from "@/lib/walls";
 
 async function log(entry: { artistId?: string | null; workId?: string | null; showId?: string | null; kind: string; body: string; actor: string }) {
   await db.insert(s.activity).values(entry);
@@ -109,6 +110,14 @@ export async function removeFromWaitlistAction(artistId: string) {
 }
 
 // ---- Sandbox: a private scratch space per show. Nothing here is a decision. ----
+
+/** Saves the gallery's wall measurements for the sandbox's to-scale view. */
+export async function saveWallSetup(setup: WallSetup) {
+  await requireOwner();
+  const value = JSON.stringify(parseWallSetup(JSON.stringify({ ...setup, measured: true })));
+  await db.insert(s.appSettings).values({ key: WALLS_KEY, value }).onConflictDoUpdate({ target: s.appSettings.key, set: { value } });
+  revalidatePath("/admin/sandbox", "layout");
+}
 
 export async function addToSandbox(showId: string, workId: string) {
   await requireOwner();
