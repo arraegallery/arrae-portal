@@ -22,6 +22,9 @@ export type BoardWork = {
   note: string | null;
   submittedOn: string | null;
   inShopify: boolean;
+  sold: boolean;
+  /** The artist (or ARRAE) archived it. Still shown to ARRAE, with a tag. */
+  archived: boolean;
   images: BoardImage[];
 };
 export type BoardNote = { id: number; body: string; actor: string | null; createdAt: string; kind: string; workId: string | null };
@@ -139,6 +142,8 @@ export async function getBoard(showId: string) {
           note: sw.note,
           submittedOn: w.submittedOn,
           inShopify: !!w.shopifyHandle,
+          sold: !!w.soldAt,
+          archived: !!w.archivedAt,
           images: imagesByWork.get(w.id) ?? [],
         })),
       notes: notes
@@ -212,6 +217,7 @@ export type SandboxWork = {
   unit: string;
   sizeAsEntered: string | null;
   sold: boolean;
+  archived: boolean;
   image: BoardImage | null;
   /** This work's decision for the sandbox's show, if it is part of it */
   showStatus: WorkStatus | null;
@@ -240,6 +246,7 @@ export async function getSandbox(showId: string) {
         unit: s.works.unit,
         sizeAsEntered: s.works.sizeAsEntered,
         soldAt: s.works.soldAt,
+        archivedAt: s.works.archivedAt,
         duplicateOf: s.works.duplicateOf,
       })
       .from(s.works),
@@ -278,6 +285,7 @@ export async function getSandbox(showId: string) {
         unit: w.unit,
         sizeAsEntered: w.sizeAsEntered,
         sold: !!w.soldAt,
+        archived: !!w.archivedAt,
         image: img ? { id: img.id, thumb: thumbs[i], full: null, w: img.widthPx, h: img.heightPx } : null,
         showStatus: mine.find((x) => x.showId === showId)?.status ?? null,
         pastShows: mine.filter((x) => x.showId !== showId).map((x) => showName.get(x.showId) ?? x.showId),
@@ -352,6 +360,9 @@ export async function getArtistProfile(artistId: string) {
       unit: w.unit,
       sizeAsEntered: w.sizeAsEntered,
       sold: !!w.soldAt,
+      archived: !!w.archivedAt,
+      archivedBy: w.archivedBy,
+      archivedByArtist: !!w.archivedBy && w.archivedBy.toLowerCase() === artist.email.toLowerCase(),
       submittedOn: w.submittedOn,
       photosRequestedAt: w.photosRequestedAt?.toISOString() ?? null,
       image: imageByWork.get(w.id) ?? null,

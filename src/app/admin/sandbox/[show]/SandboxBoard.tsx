@@ -62,7 +62,7 @@ export function SandboxBoard({
         (source === "roster" && w.pastShows.length > 0)) &&
       (category === "all" || w.category === category) &&
       (!maxPrice || (w.price ?? 0) <= Number(maxPrice)) &&
-      (!hideSold || !w.sold) &&
+      (!hideSold || (!w.sold && !w.archived)) &&
       (!q || w.artistName.toLowerCase().includes(q) || w.title.toLowerCase().includes(q) || (w.medium ?? "").toLowerCase().includes(q)),
   );
 
@@ -389,7 +389,7 @@ export function SandboxBoard({
               className="w-20 rounded-md px-2 py-1.5 ring-1 ring-line"
             />
             <label className="flex items-center gap-1 text-xs text-muted">
-              <input type="checkbox" checked={hideSold} onChange={(e) => setHideSold(e.target.checked)} /> Hide sold
+              <input type="checkbox" checked={hideSold} onChange={(e) => setHideSold(e.target.checked)} /> Hide sold &amp; archived
             </label>
           </div>
           <p className="mt-2 text-xs text-muted">{pickable.length} works</p>
@@ -421,6 +421,7 @@ export function SandboxBoard({
                 >
                   +
                 </button>
+                {w.archived && <span className="absolute bottom-1 right-1 rounded bg-white px-1 text-[10px] text-muted ring-1 ring-line">Archived</span>}
                 {w.onWaitlist && <span className="absolute left-1 top-1 rounded bg-amber-50 px-1 text-[10px] text-amber-800 ring-1 ring-amber-200">Waitlist</span>}
               </li>
             ))}

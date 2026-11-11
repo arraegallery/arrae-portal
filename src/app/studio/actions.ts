@@ -42,7 +42,7 @@ async function openShow(showId: string) {
 export async function putForwardWorks(workIds: string[], showId: string) {
   const { me, rows } = await myWorks(workIds);
   const show = await openShow(showId);
-  const available = rows.filter((w) => !w.soldAt);
+  const available = rows.filter((w) => !w.soldAt && !w.archivedAt);
   if (!available.length) throw new Error("Choose at least one available work");
   await db.insert(s.showWorks).values(available.map((w) => ({ showId, workId: w.id, status: "Submitted" as const }))).onConflictDoNothing();
   await ensureApplication(me.artist.id, showId);
@@ -62,6 +62,56 @@ export async function withdrawWork(workId: string, showId: string) {
   if (!deleted.length) throw new Error("This work is already being reviewed. Send us a message if you need to change it.");
   await logActivity({ artistId: rows[0].artistId, workId, showId, kind: "submission", body: `Artist withdrew "${rows[0].title}"`, actor: me.email });
   revalidatePath("/studio");
+}
+
+/**
+ * Archive a work (or bring it back). Archiving never deletes anything and never touches
+ * the sold date: a work can be archived and sold at the same time. Pending submissions to
+ * open calls are taken back out; if ARRAE is already considering or showing the work,
+ * ARRAE gets an email so nothing changes on the wall without them knowing.
+ */
+export async function archiveMyWork(workId: string, archived: boolean) {
+  return asResult(() => setMyWorkArchived(workId, archived));
+}
+
+async function setMyWorkArchived(workId: string, archived: boolean) {
+  const { me, rows } = await myWorks([workId]);
+  const before = rows[0];
+  if (archived === !!before.archivedAt) return { withdrawn: 0 };
+  const set = archived ? { archivedAt: new Date(), archivedBy: me.email } : { archivedAt: null, archivedBy: null };
+  await db.update(s.works).set(set).where(eq(s.works.id, workId));
+  await recordWorkChanges({ workId, artistId: before.artistId, before, after: { archivedAt: set.archivedAt }, actor: me.email, role: "artist" });
+
+  let withdrawn = 0;
+  if (archived) {
+    const links = await db.select({ sw: s.showWorks, show: s.shows }).from(s.showWorks).innerJoin(s.shows, eq(s.shows.id, s.showWorks.showId)).where(eq(s.showWorks.workId, workId));
+    const today = new Date().toISOString().slice(0, 10);
+    // Only pending, not-yet-reviewed submissions to open calls come out automatically.
+    const pending = links.filter((l) => l.sw.status === "Submitted" && l.show.openForSubmissions);
+    for (const l of pending) {
+      await db.delete(s.showWorks).where(and(eq(s.showWorks.workId, workId), eq(s.showWorks.showId, l.show.id), eq(s.showWorks.status, "Submitted")));
+      await logActivity({ artistId: before.artistId, workId, showId: l.show.id, kind: "submission", body: `Artist withdrew "${before.title}" (archived it)`, actor: me.email });
+    }
+    withdrawn = pending.length;
+    // Anything ARRAE is still working with: reviewing, requested, selected for a show that hasn't closed.
+    const live = links.filter(
+      (l) => !pending.includes(l) && !["Not included", "Unavailable"].includes(l.sw.status) && (!l.show.closesOn || l.show.closesOn >= today),
+    );
+    if (live.length) {
+      const where = live.map((l) => `${l.show.name} (${l.sw.status})`).join(", ");
+      await notifyEmail(arraeRecipients(), {
+        subject: `${me.artist.name} archived "${before.title}"`,
+        heading: "A work was archived",
+        body: `${me.artist.name} archived "${before.title}" in their studio. It is still part of: ${where}.\n\nNothing was removed from those shows. Open their profile to follow up.`,
+        buttonLabel: "Open artist profile",
+        buttonUrl: portalUrl(`/admin/artists/${before.artistId}`),
+      });
+    }
+  }
+  await logActivity({ artistId: before.artistId, workId, kind: "edit", body: archived ? `Artist archived "${before.title}"` : `Artist restored "${before.title}" from the archive`, actor: me.email });
+  revalidatePath("/studio");
+  revalidatePath("/admin", "layout");
+  return { withdrawn };
 }
 
 /** Signed upload slots for a new work's photos: a full image and a small one for grids, per photo. */

@@ -127,6 +127,13 @@
       "when": 1793786732157,
       "tag": "0017_email_opt_outs",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794059224016,
+      "tag": "0018_work_archive",
+      "breakpoints": true
     }
   ]
 }

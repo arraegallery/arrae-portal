@@ -323,7 +323,7 @@ export async function addWorksToShow(workIds: string[], showId: string) {
 
 export async function updateWork(
   workId: string,
-  fields: { title?: string; year?: string; medium?: string; category?: string; description?: string; price?: string; width?: string; height?: string; depth?: string; unit?: string; sold?: string },
+  fields: { title?: string; year?: string; medium?: string; category?: string; description?: string; price?: string; width?: string; height?: string; depth?: string; unit?: string; sold?: string; archived?: string },
 ) {
   const actor = await requireOwner();
   const num = (v?: string) => {
@@ -350,6 +350,11 @@ export async function updateWork(
   if (!before) throw new Error("That work no longer exists");
   // "Sold" only changes when it flips, so re-saving keeps the original sold date.
   if (fields.sold !== undefined && !!fields.sold !== !!before.soldAt) set.soldAt = fields.sold ? new Date() : null;
+  // Archived is separate from sold: a work can be both, and neither clears the other.
+  if (fields.archived !== undefined && !!fields.archived !== !!before.archivedAt) {
+    set.archivedAt = fields.archived ? new Date() : null;
+    set.archivedBy = fields.archived ? actor : null;
+  }
   if (!Object.keys(set).length) return;
   const [w] = await db.update(s.works).set(set).where(eq(s.works.id, workId)).returning({ artistId: s.works.artistId, title: s.works.title });
   const changed = await recordWorkChanges({ workId, artistId: w?.artistId ?? null, before, after: set, actor, role: "arrae" });
