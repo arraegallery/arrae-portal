@@ -208,13 +208,13 @@ export function ReviewBoard({
           <option value="all">Any status</option>
           <option value="open">Still to decide</option>
           {["Shortlist", "Selected", "Waitlist", "Not included"].map((s) => (
-            <option key={s}>{s}</option>
+            <option key={s} value={s}>{s}</option>
           ))}
         </select>
         <select value={category} onChange={(e) => setCategory(e.target.value)} className="rounded-md bg-white px-2 py-1.5 ring-1 ring-line">
           <option value="all">All media</option>
           {categories.map((c) => (
-            <option key={c}>{c}</option>
+            <option key={c} value={c}>{c}</option>
           ))}
         </select>
         <input

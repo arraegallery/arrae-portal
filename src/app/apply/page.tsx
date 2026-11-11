@@ -2,16 +2,17 @@ import Link from "next/link";
 import { asc, eq } from "drizzle-orm";
 import { db, schema as s } from "@/db";
 import { signedInEmail } from "@/lib/artist-auth";
-import { startApplication } from "./actions";
+import { applyWithCode, startApplication } from "./actions";
 
 const ERRORS: Record<string, string> = {
   email: "That doesn't look like an email address. Please check it and try again.",
   send: "We couldn't send the email just now. Please try again in a minute.",
+  code: "That code didn't work. Codes work once, for an hour. Use the code in the newest email, or ask for a new one.",
   setup: "Applications aren't set up yet. Please write to hello@arraegallery.com.",
 };
 
-export default async function ApplyPage({ searchParams }: { searchParams: Promise<{ sent?: string; error?: string }> }) {
-  const { sent, error } = await searchParams;
+export default async function ApplyPage({ searchParams }: { searchParams: Promise<{ sent?: string; error?: string; email?: string }> }) {
+  const { sent, error, email: sentTo } = await searchParams;
   const email = await signedInEmail();
   const open = await db.select({ id: s.shows.id, name: s.shows.name, deadline: s.shows.applicationDeadline }).from(s.shows).where(eq(s.shows.openForSubmissions, true)).orderBy(asc(s.shows.name));
   return (
@@ -56,6 +57,27 @@ export default async function ApplyPage({ searchParams }: { searchParams: Promis
         <div className="mt-8 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-900 ring-1 ring-emerald-200">
           <p className="font-medium">Check your email.</p>
           <p className="mt-1">We sent you a link to continue your application. It can take a minute to arrive; check your spam folder if you don&rsquo;t see it.</p>
+          {sentTo?.includes("@") && (
+            <form action={applyWithCode} className="mt-4 rounded-md bg-white p-3 text-ink ring-1 ring-emerald-200">
+              <label htmlFor="code" className="block text-sm">
+                Link not working? Type the 6-digit code from the email.
+              </label>
+              <input type="hidden" name="email" value={sentTo} />
+              <input
+                id="code"
+                name="code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9 ]*"
+                maxLength={8}
+                required
+                placeholder="123456"
+                className="mt-2 w-full rounded-md bg-white px-3 py-2 text-center text-lg tracking-widest ring-1 ring-line"
+              />
+              {error === "code" && <p className="mt-2 text-sm text-rose-700">{ERRORS.code}</p>}
+              <button className="mt-2 w-full rounded-md bg-ink px-4 py-2 text-sm text-white">Continue with code</button>
+            </form>
+          )}
           <Link href="/apply" className="mt-2 inline-block underline">
             Use a different email
           </Link>

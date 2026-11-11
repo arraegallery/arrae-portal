@@ -13,6 +13,7 @@ import { createPhotoSlots } from "@/lib/photos";
 import { supabaseAdmin, supabaseConfigured, supabaseForRequest } from "@/lib/supabase/server";
 import { getTerms } from "@/lib/terms";
 import { sendSignInLink } from "@/lib/sign-in-link";
+import { homeFor } from "@/lib/after-sign-in";
 import { parseAmount } from "@/lib/amount";
 import { asResult } from "@/lib/action-result";
 
@@ -42,7 +43,20 @@ export async function startApplication(formData: FormData) {
     }
     if (failed) redirect(`/apply?error=send`);
   }
-  redirect(`/apply?sent=1`);
+  redirect(`/apply?sent=1&email=${encodeURIComponent(email)}`);
+}
+
+/** Step 1, other way in: the 6-digit code from the email, for when the link won't open. */
+export async function applyWithCode(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const token = String(formData.get("code") ?? "").replace(/\D/g, "");
+  const back = `/apply?sent=1&error=code&email=${encodeURIComponent(email)}`;
+  if (!EMAIL.test(email) || token.length < 6) redirect(back);
+  const supabase = await supabaseForRequest();
+  const { data, error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
+  const signedIn = data.user?.email?.toLowerCase();
+  if (error || !signedIn) redirect(back);
+  redirect(await homeFor(signedIn));
 }
 
 async function mySignup() {

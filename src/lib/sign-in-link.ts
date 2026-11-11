@@ -33,7 +33,7 @@ export async function sendSignInLink(email: string, origin: string, opts: { crea
   // A 6-digit code from the same token, typed on the sign-in page. It works when the link
   // doesn't, for example when a mail app opens links in its own browser.
   const code = data.properties.email_otp;
-  const codeLine = !apply && code ? `\n\nIf the button below doesn't work, type this code on the ARRAE sign-in page instead: ${code}` : "";
+  const codeLine = code ? `\n\nIf the button below doesn't work, type this code on the ${apply ? "application" : "ARRAE sign-in"} page instead: ${code}` : "";
   const content = {
     subject: apply ? "Continue your ARRAE application" : "Your ARRAE sign-in link",
     heading: apply ? "Continue your application" : "Your sign-in link",

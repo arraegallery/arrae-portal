@@ -47,7 +47,7 @@ export function ShowsManager({ shows }: { shows: Show[] }) {
           Type
           <select value={type} onChange={(e) => setType(e.target.value as (typeof TYPES)[number])} className={input}>
             {TYPES.map((t) => (
-              <option key={t}>{t}</option>
+              <option key={t} value={t}>{t}</option>
             ))}
           </select>
         </label>
@@ -148,7 +148,7 @@ function ShowCard({ show }: { show: Show }) {
             Type
             <select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })} className={input}>
               {TYPES.map((t) => (
-                <option key={t}>{t}</option>
+                <option key={t} value={t}>{t}</option>
               ))}
             </select>
           </label>
