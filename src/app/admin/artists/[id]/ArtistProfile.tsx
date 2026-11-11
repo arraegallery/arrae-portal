@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { parseAmount } from "@/lib/amount";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import {
   addNote,
   addWorkPhotos,
@@ -349,6 +349,7 @@ function ChangeLog({ changes, works }: { changes: Change[]; works: Work[] }) {
 function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: Work; shows: ShowOption[]; changes: Change[]; owner: boolean; artistName: string }) {
   const [work, setWork] = useState(initial);
   const [panel, setPanel] = useState<"photos" | "ask" | null>(null);
+  const [viewing, setViewing] = useState(false);
   const [askNote, setAskNote] = useState(ASK_NOTE);
   const [asked, setAsked] = useState<string | null>(null);
   const [putForward, setPutForward] = useState("");
@@ -393,15 +394,18 @@ function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: W
   );
   return (
     <li className="flex gap-3 rounded-lg bg-white p-3 ring-1 ring-line">
-      <div className="w-24 shrink-0 overflow-hidden rounded">
+      <button onClick={() => setViewing(true)} title="Open large" className="w-24 shrink-0 cursor-zoom-in self-start overflow-hidden rounded hover:opacity-90">
         <ArtworkImage image={work.image ?? undefined} title={work.title} fallbackRatio={work.width && work.height ? work.width / work.height : null} />
-      </div>
+      </button>
+      {viewing && <WorkViewer work={work} artistName={artistName} changes={changes} onClose={() => setViewing(false)} />}
       <div className="min-w-0 flex-1 text-sm">
         {!editing ? (
           <>
             <div className="flex items-start gap-2">
               <div className="min-w-0">
-                <p className="font-medium">{work.title}</p>
+                <button onClick={() => setViewing(true)} className="text-left font-medium hover:underline">
+                  {work.title}
+                </button>
                 <p className="text-xs text-muted">
                   {[work.year, work.medium].filter(Boolean).join(" · ")}
                   {work.year || work.medium ? " · " : ""}
@@ -618,6 +622,114 @@ function WorkRow({ work: initial, shows, changes, owner, artistName }: { work: W
         )}
       </div>
     </li>
+  );
+}
+
+/** A work opened large: every photo on the left, its details on the right. Esc or a click outside closes it. */
+function WorkViewer({ work, artistName, changes, onClose }: { work: Work; artistName: string; changes: Change[]; onClose: () => void }) {
+  type Photo = Awaited<ReturnType<typeof getWorkPhotos>>[number];
+  const [photos, setPhotos] = useState<Photo[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    let live = true;
+    getWorkPhotos(work.id)
+      .then((p) => live && setPhotos(p))
+      .catch(() => live && setFailed(true));
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close.current();
+    window.addEventListener("keydown", onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      live = false;
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [work.id]);
+  const ratio = work.width && work.height ? work.width / work.height : null;
+  const shown = photos ?? (work.image ? [{ ...work.image, position: 0 }] : []);
+  const row = (label: string, value: React.ReactNode) => (
+    <div>
+      <dt className="text-muted">{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-black/85 md:flex-row" onClick={onClose}>
+      <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto p-4 md:items-center md:p-6">
+        <div className="max-w-full" onClick={(e) => e.stopPropagation()}>
+          {shown.length ? (
+            shown.map((img) => (
+              <div key={img.id} className="mx-auto mb-4 max-w-[90vw] md:max-w-[60vw]">
+                <ArtworkImage image={img} title={work.title} size="full" className="max-h-[80vh] w-auto object-contain" />
+              </div>
+            ))
+          ) : (
+            <div className="w-[80vw] md:w-[40vw]">
+              <ArtworkImage title={work.title} fallbackRatio={ratio} />
+            </div>
+          )}
+          {!photos && !failed && work.image && <p className="text-center text-xs text-white/60">Loading full-size photos…</p>}
+          {failed && <p className="text-center text-xs text-white/60">Couldn&rsquo;t load the full-size photos. Showing the preview.</p>}
+        </div>
+      </div>
+      <aside className="max-h-[50vh] w-full shrink-0 overflow-y-auto bg-paper p-5 md:max-h-none md:w-96 md:p-6" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} className="float-right text-sm text-muted">
+          Close ✕
+        </button>
+        <p className="text-sm text-muted">{artistName}</p>
+        <h2 className="font-display text-2xl">{work.title}</h2>
+        <p className="mt-1 text-sm text-muted">{[work.year, work.medium].filter(Boolean).join(" · ")}</p>
+        {(work.sold || work.archived) && (
+          <div className="mt-2 flex gap-1.5 text-[11px]">
+            {work.sold && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-800 ring-1 ring-emerald-200">Sold</span>}
+            {work.archived && <span className="rounded bg-white px-1.5 py-0.5 text-muted ring-1 ring-line">{work.archivedByArtist ? "Archived by artist" : "Archived"}</span>}
+          </div>
+        )}
+        <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+          {row("Price", formatPrice(work.price))}
+          {row(
+            "Size",
+            <>
+              {formatSize(work)}
+              {work.sizeAsEntered && work.width && work.height && <span className="block text-xs text-muted">Entered as &ldquo;{work.sizeAsEntered}&rdquo;</span>}
+            </>,
+          )}
+          {row("Category", work.category ?? "Not given")}
+          {row("Submitted", work.submittedOn ?? "Unknown")}
+        </dl>
+        {work.description && <p className="mt-4 whitespace-pre-line text-sm leading-relaxed">{work.description}</p>}
+        <div className="mt-6">
+          <p className="mb-2 text-xs uppercase tracking-wider text-muted">Shows</p>
+          {work.shows.length ? (
+            <ul className="space-y-1 text-sm">
+              {work.shows.map((x) => (
+                <li key={x.showId} className="flex items-center justify-between gap-2">
+                  <span>{x.name}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] ring-1 ${STATUS_TONE[x.status as keyof typeof STATUS_TONE] ?? "ring-line"}`}>{x.status}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted">Not part of any show yet.</p>
+          )}
+        </div>
+        {changes.length > 0 && (
+          <div className="mt-6">
+            <p className="mb-2 text-xs uppercase tracking-wider text-muted">Changes</p>
+            <ul className="space-y-1 text-xs text-muted">
+              {changes.slice(0, 12).map((c) => (
+                <li key={c.id}>
+                  {describeChange(c)} {who(c)} · {when(c.at)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <p className="mt-8 text-xs text-muted">Press Esc or click outside to close.</p>
+      </aside>
+    </div>
   );
 }
 
