@@ -637,7 +637,11 @@ function WorkViewer({ work, artistName, changes, onClose }: { work: Work; artist
     getWorkPhotos(work.id)
       .then((p) => live && setPhotos(p))
       .catch(() => live && setFailed(true));
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close.current();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close.current();
+      else if (e.key === "ArrowRight" && count.current > 1) setIdx((i) => (i + 1) % count.current);
+      else if (e.key === "ArrowLeft" && count.current > 1) setIdx((i) => (i - 1 + count.current) % count.current);
+    };
     window.addEventListener("keydown", onKey);
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -649,6 +653,12 @@ function WorkViewer({ work, artistName, changes, onClose }: { work: Work; artist
   }, [work.id]);
   const ratio = work.width && work.height ? work.width / work.height : null;
   const shown = photos ?? (work.image ? [{ ...work.image, position: 0 }] : []);
+  const [idx, setIdx] = useState(0);
+  const at = shown.length ? Math.min(idx, shown.length - 1) : 0;
+  const current = shown[at];
+  const count = useRef(0);
+  count.current = shown.length;
+  const go = (step: number) => setIdx((i) => (count.current ? (i + step + count.current) % count.current : 0));
   const row = (label: string, value: React.ReactNode) => (
     <div>
       <dt className="text-muted">{label}</dt>
@@ -657,22 +667,45 @@ function WorkViewer({ work, artistName, changes, onClose }: { work: Work; artist
   );
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/85 md:flex-row" onClick={onClose}>
-      <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto p-4 md:items-center md:p-6">
-        <div className="max-w-full" onClick={(e) => e.stopPropagation()}>
-          {shown.length ? (
-            shown.map((img) => (
-              <div key={img.id} className="mx-auto mb-4 max-w-[90vw] md:max-w-[60vw]">
-                <ArtworkImage image={img} title={work.title} size="full" className="max-h-[80vh] w-auto object-contain" />
-              </div>
-            ))
-          ) : (
-            <div className="w-[80vw] md:w-[40vw]">
-              <ArtworkImage title={work.title} fallbackRatio={ratio} />
-            </div>
-          )}
-          {!photos && !failed && work.image && <p className="text-center text-xs text-white/60">Loading full-size photos…</p>}
-          {failed && <p className="text-center text-xs text-white/60">Couldn&rsquo;t load the full-size photos. Showing the preview.</p>}
-        </div>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-3 p-4 md:p-6">
+        {current ? (
+          <div className="relative flex min-h-0 w-full flex-1 items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img key={current.id} src={current.full ?? current.thumb ?? undefined} alt={work.title} className="block max-h-[40vh] max-w-full object-contain md:max-h-[calc(100vh-10rem)]" />
+            {shown.length > 1 && (
+              <>
+                <button onClick={() => go(-1)} aria-label="Previous photo" className="absolute left-0 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-3 py-2 text-xl text-white hover:bg-black/70">
+                  ‹
+                </button>
+                <button onClick={() => go(1)} aria-label="Next photo" className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-3 py-2 text-xl text-white hover:bg-black/70">
+                  ›
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="w-[80vw] md:w-[40vw]" onClick={(e) => e.stopPropagation()}>
+            <ArtworkImage title={work.title} fallbackRatio={ratio} />
+          </div>
+        )}
+        {shown.length > 1 && (
+          <div className="flex max-w-full shrink-0 gap-2 overflow-x-auto" onClick={(e) => e.stopPropagation()}>
+            {shown.map((img, i) => (
+              <button
+                key={img.id}
+                onClick={() => setIdx(i)}
+                aria-label={`Photo ${i + 1}`}
+                className={`h-14 w-14 shrink-0 overflow-hidden rounded ring-2 ${i === at ? "ring-white" : "ring-transparent opacity-60 hover:opacity-100"}`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={img.thumb ?? img.full ?? undefined} alt="" className="h-full w-full object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
+        {shown.length > 1 && <p className="shrink-0 text-xs text-white/60">Photo {at + 1} of {shown.length}</p>}
+        {!photos && !failed && work.image && <p className="shrink-0 text-xs text-white/60">Loading full-size photos…</p>}
+        {failed && <p className="shrink-0 text-xs text-white/60">Couldn&rsquo;t load the full-size photos. Showing the preview.</p>}
       </div>
       <aside className="max-h-[50vh] w-full shrink-0 overflow-y-auto bg-paper p-5 md:max-h-none md:w-96 md:p-6" onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} className="float-right text-sm text-muted">
@@ -727,7 +760,7 @@ function WorkViewer({ work, artistName, changes, onClose }: { work: Work; artist
             </ul>
           </div>
         )}
-        <p className="mt-8 text-xs text-muted">Press Esc or click outside to close.</p>
+        <p className="mt-8 text-xs text-muted">Use ← → to see other photos. Press Esc or click outside to close.</p>
       </aside>
     </div>
   );
