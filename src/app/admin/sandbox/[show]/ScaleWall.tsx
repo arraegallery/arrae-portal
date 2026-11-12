@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { saveSandboxLayout, saveWallSetup } from "../../actions";
 import { formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { SandboxWork } from "@/lib/queries";
-import { feetInches, hangWorks, realSize, UNKNOWN_SIZE, type Wall, type WallLayout, type WallSetup, type WallSpot } from "@/lib/walls";
+import { FLOOR, feetInches, hangWorks, startsOnFloor, realSize, UNKNOWN_SIZE, type Wall, type WallLayout, type WallSetup, type WallSpot } from "@/lib/walls";
 
 /** Room left of each wall for the person drawn for scale, in inches. */
 const GUTTER = 26;
@@ -56,16 +56,22 @@ export function ScaleWall({
   const [drag, setDrag] = useState<Drag | null>(null);
   const [editing, setEditing] = useState(false);
 
-  // Only spots on walls that still exist count (walls can be edited or removed).
+  // Only spots on walls that still exist (or the floor) count; walls can be edited or removed.
   const spotOf = (id: string) => {
     const s = layout[id];
-    return s && s.wall < setup.walls.length ? s : null;
+    return s && (s.wall === FLOOR || s.wall < setup.walls.length) ? s : null;
   };
+  // Sculpture and ceramics start on the floor; drag anything in or out of the floor box.
+  const onFloor = items.filter((w) => {
+    const s = spotOf(w.id);
+    return s ? s.wall === FLOOR : startsOnFloor(w);
+  });
+  const floorIds = new Set(onFloor.map((w) => w.id));
   // Before any arranging, works hang automatically on the real walls (in a line if they fit,
   // otherwise in rows). Once you start arranging, works added later, and any that didn't fit,
   // wait in a tray above the walls until you drag them on.
-  const arranging = items.some((w) => spotOf(w.id));
-  const unplaced = items.filter((w) => !spotOf(w.id));
+  const arranging = items.some((w) => spotOf(w.id) && spotOf(w.id)!.wall !== FLOOR);
+  const unplaced = items.filter((w) => !spotOf(w.id) && !floorIds.has(w.id));
   const auto = useMemo(() => (arranging ? null : hangWorks(unplaced, setup)), [arranging, unplaced, setup]);
   const walls = setup.walls.map((wall) => ({ wall, overflow: false }));
 
@@ -96,6 +102,7 @@ export function ScaleWall({
   }
   auto?.walls.forEach((h, i) => h.placed.forEach((p) => onWall[i]?.push({ ...p, placed: false })));
   const tray: Spot[] = (auto ? auto.leftover : unplaced).map((w) => ({ item: w, x: 0, y: 0, ...sized(w), placed: false }));
+  const floor: Spot[] = onFloor.map((w) => ({ item: w, x: 0, y: 0, ...sized(w), placed: layout[w.id]?.wall === FLOOR }));
 
   const widest = Math.max(...walls.map((h) => h.wall.width));
   const scale = Math.max(0.5, px / (widest + GUTTER)); // pixels per inch
@@ -118,8 +125,13 @@ export function ScaleWall({
   function drop(e: React.PointerEvent, d: Drag, p: Spot) {
     const left = e.clientX - d.grabX;
     const top = e.clientY - d.grabY;
+    const under = document.elementsFromPoint(e.clientX, e.clientY) as HTMLElement[];
+    if (under.some((el) => el.dataset?.floor !== undefined)) {
+      if (!floorIds.has(p.item.id) || !p.placed) place(p.item.id, { wall: FLOOR, x: 0, y: 0 });
+      return;
+    }
     // Find the wall under the pointer.
-    const target = document.elementsFromPoint(e.clientX, e.clientY).find((el) => (el as HTMLElement).dataset?.wall !== undefined) as HTMLElement | undefined;
+    const target = under.find((el) => el.dataset?.wall !== undefined);
     if (!target) return;
     const wi = Number(target.dataset.wall);
     const wall = walls[wi]?.wall;
@@ -173,7 +185,7 @@ export function ScaleWall({
         title={
           d
             ? undefined
-            : `${w.artistName}, ${w.title}\n${formatSize(w)} · ${formatPrice(w.price)}${onWallNow ? `\nCentre ${feetInches(p.y + p.height / 2)} from the floor` : "\nDrag it onto a wall"}${p.known ? "" : "\nNo size given: shown as a 12″ square"}`
+            : `${w.artistName}, ${w.title}\n${formatSize(w)} · ${formatPrice(w.price)}${onWallNow ? `\nCentre ${feetInches(p.y + p.height / 2)} from the floor` : floorIds.has(w.id) ? "\nOn the floor or a pedestal" : "\nDrag it onto a wall"}${p.known ? "" : "\nNo size given: shown as a 12″ square"}`
         }
         className={`group ${at ? "absolute" : "relative shrink-0"} cursor-grab touch-none select-none overflow-hidden bg-[#efebe4] active:cursor-grabbing ${
           d?.moved ? "z-20 opacity-80 shadow-[4px_8px_16px_rgba(0,0,0,0.3)]" : "z-10 shadow-[2px_3px_6px_rgba(0,0,0,0.18)]"
@@ -238,6 +250,21 @@ export function ScaleWall({
           <div className="flex flex-wrap items-end gap-3">{tray.map((p) => renderWork(p, null, false))}</div>
         </div>
       )}
+
+      <div data-floor className="mb-8 rounded-lg bg-[#f3efe8] p-3 ring-1 ring-[#e2dccf]">
+        <p className="mb-2 text-sm">
+          <span className="font-medium">Floor and pedestals</span>{" "}
+          <span className="text-xs text-muted">
+            · {floor.length} work{floor.length === 1 ? "" : "s"} · front view, to scale · doesn&apos;t use wall space. Sculpture and ceramics start
+            here; drag any work in or out.
+          </span>
+        </p>
+        {floor.length ? (
+          <div className="flex min-h-16 flex-wrap items-end gap-4 border-b-2 border-[#cfc7b8] pb-px">{floor.map((p) => renderWork(p, null, false))}</div>
+        ) : (
+          <p className="flex min-h-16 items-center justify-center rounded border border-dashed border-[#d6cfc2] text-xs text-muted">Drag a sculpture here</p>
+        )}
+      </div>
 
       <div className="flex flex-wrap items-start gap-x-10 gap-y-8">
         {walls.map((h, i) => {

@@ -212,6 +212,12 @@ export function hangWorks<T extends Sized>(items: T[], setup: WallSetup): { wall
 export type WallSpot = { wall: number; x: number; y: number };
 export type WallLayout = Record<string, WallSpot>;
 
+/** WallSpot.wall value for works standing on the floor or a pedestal instead of hanging. */
+export const FLOOR = -1;
+/** Categories that start on the floor rather than on a wall. */
+export const FLOOR_CATEGORIES = ["Sculpture", "Ceramic"];
+export const startsOnFloor = (w: { category?: string | null }) => !!w.category && FLOOR_CATEGORIES.includes(w.category);
+
 export const layoutKey = (showId: string) => `sandbox_layout:${showId}`;
 
 export function parseLayout(raw: string | null | undefined): WallLayout {
@@ -223,7 +229,7 @@ export function parseLayout(raw: string | null | undefined): WallLayout {
       const wall = Number(s?.wall);
       const x = Number(s?.x);
       const y = Number(s?.y);
-      if ([wall, x, y].every(Number.isFinite) && wall >= 0 && wall < 60) out[id] = { wall: Math.floor(wall), x, y };
+      if ([wall, x, y].every(Number.isFinite) && (wall === FLOOR || (wall >= 0 && wall < 60))) out[id] = { wall: Math.floor(wall), x, y };
     }
     return out;
   } catch {
