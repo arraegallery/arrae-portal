@@ -63,7 +63,8 @@ export function ScaleWall({
   const hung = useMemo(() => (arranging ? [] : hangWorks(unplaced, setup)), [arranging, unplaced, setup]);
   const maxSaved = Math.max(-1, ...items.map((w) => layout[w.id]?.wall ?? -1));
   const wallCount = Math.max(setup.walls.length, hung.length, maxSaved + 1);
-  const last = setup.walls[setup.walls.length - 1];
+  // Extra "doesn't fit" walls are as wide as the widest real wall.
+  const last = setup.walls.reduce((a, b) => (b.width > a.width ? b : a));
   const walls = Array.from({ length: wallCount }, (_, i) =>
     i < setup.walls.length
       ? { wall: setup.walls[i], overflow: false }
@@ -247,15 +248,15 @@ export function ScaleWall({
         </div>
       )}
 
-      <div className="space-y-8">
+      <div className="flex flex-wrap items-start gap-x-10 gap-y-8">
         {walls.map((h, i) => {
           const W = h.wall.width * scale;
           const H = h.wall.height * scale;
           const g = GUTTER * scale;
           const spots = onWall[i];
           return (
-            <figure key={i}>
-              <figcaption className="mb-1 flex items-baseline gap-2 text-sm">
+            <figure key={i} style={{ width: GUTTER * scale + h.wall.width * scale }}>
+              <figcaption className="mb-1 flex min-h-10 flex-wrap items-baseline gap-x-2 text-sm leading-tight">
                 <span className={`font-medium ${h.overflow ? "text-red-700" : ""}`}>{h.wall.name}</span>
                 <span className="text-xs text-muted">
                   {feetInches(h.wall.width)} × {feetInches(h.wall.height)} · {spots.length} work{spots.length === 1 ? "" : "s"}
