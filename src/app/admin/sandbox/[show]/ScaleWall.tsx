@@ -56,26 +56,18 @@ export function ScaleWall({
   const [drag, setDrag] = useState<Drag | null>(null);
   const [editing, setEditing] = useState(false);
 
-  // Before any arranging, every work hangs in a neat line in sandbox order. Once you start
-  // arranging, works added later wait in a tray above the walls until you drag them on.
-  const arranging = items.some((w) => layout[w.id]);
-  const unplaced = useMemo(() => items.filter((w) => !layout[w.id]), [items, layout]);
-  const hung = useMemo(() => (arranging ? [] : hangWorks(unplaced, setup)), [arranging, unplaced, setup]);
-  const maxSaved = Math.max(-1, ...items.map((w) => layout[w.id]?.wall ?? -1));
-  const wallCount = Math.max(setup.walls.length, hung.length, maxSaved + 1);
-  // Extra "doesn't fit" walls are as wide as the widest real wall.
-  const last = setup.walls.reduce((a, b) => (b.width > a.width ? b : a));
-  const walls = Array.from({ length: wallCount }, (_, i) =>
-    i < setup.walls.length
-      ? { wall: setup.walls[i], overflow: false }
-      : {
-          wall: {
-            ...last,
-            name: `Doesn't fit yet ${i - setup.walls.length + 1}`,
-          } as Wall,
-          overflow: true,
-        },
-  );
+  // Only spots on walls that still exist count (walls can be edited or removed).
+  const spotOf = (id: string) => {
+    const s = layout[id];
+    return s && s.wall < setup.walls.length ? s : null;
+  };
+  // Before any arranging, works hang automatically on the real walls (in a line if they fit,
+  // otherwise in rows). Once you start arranging, works added later, and any that didn't fit,
+  // wait in a tray above the walls until you drag them on.
+  const arranging = items.some((w) => spotOf(w.id));
+  const unplaced = items.filter((w) => !spotOf(w.id));
+  const auto = useMemo(() => (arranging ? null : hangWorks(unplaced, setup)), [arranging, unplaced, setup]);
+  const walls = setup.walls.map((wall) => ({ wall, overflow: false }));
 
   type Spot = {
     item: SandboxWork;
@@ -92,7 +84,7 @@ export function ScaleWall({
   };
   const onWall: Spot[][] = walls.map(() => []);
   for (const w of items) {
-    const s = layout[w.id];
+    const s = spotOf(w.id);
     if (s)
       onWall[s.wall]?.push({
         item: w,
@@ -102,13 +94,12 @@ export function ScaleWall({
         placed: true,
       });
   }
-  hung.forEach((h, i) => h.placed.forEach((p) => onWall[i]?.push({ ...p, placed: false })));
-  const tray: Spot[] = arranging ? unplaced.map((w) => ({ item: w, x: 0, y: 0, ...sized(w), placed: false })) : [];
+  auto?.walls.forEach((h, i) => h.placed.forEach((p) => onWall[i]?.push({ ...p, placed: false })));
+  const tray: Spot[] = (auto ? auto.leftover : unplaced).map((w) => ({ item: w, x: 0, y: 0, ...sized(w), placed: false }));
 
   const widest = Math.max(...walls.map((h) => h.wall.width));
   const scale = Math.max(0.5, px / (widest + GUTTER)); // pixels per inch
   const noSize = items.filter((w) => !w.width || !w.height).length;
-  const overflowCount = walls.reduce((n, h, i) => n + (h.overflow ? onWall[i].length : 0), 0);
   const placedCount = items.filter((w) => layout[w.id]).length;
 
   /**
@@ -211,10 +202,9 @@ export function ScaleWall({
     <div ref={box}>
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
         <span>
-          {setup.walls.length} wall{setup.walls.length === 1 ? "" : "s"} · works start in a line at {feetInches(setup.center)} to centre
+          {setup.walls.length} wall{setup.walls.length === 1 ? "" : "s"} · centred at {feetInches(setup.center)} from the floor
         </span>
         {noSize > 0 && <span className="text-amber-800">{noSize} without a size, shown as dashed 12″ squares</span>}
-        {overflowCount > 0 && <span className="text-red-700">{overflowCount} not on a real wall yet</span>}
         <div className="ml-auto flex gap-2">
           {placedCount > 0 && (
             <button
@@ -242,7 +232,8 @@ export function ScaleWall({
       {tray.length > 0 && (
         <div className="mb-6 rounded-lg bg-white/70 p-3 ring-1 ring-line">
           <p className="mb-2 text-xs text-muted">
-            {tray.length} work{tray.length === 1 ? "" : "s"} waiting to go on a wall (shown to scale). Drag {tray.length === 1 ? "it" : "them"} onto a wall.
+            {tray.length} work{tray.length === 1 ? "" : "s"} not on a wall yet (shown to scale).{" "}
+            {arranging ? `Drag ${tray.length === 1 ? "it" : "them"} onto a wall.` : "There's no room left on the walls: drag works around to make space, or take some out of the sandbox."}
           </p>
           <div className="flex flex-wrap items-end gap-3">{tray.map((p) => renderWork(p, null, false))}</div>
         </div>
@@ -291,8 +282,8 @@ export function ScaleWall({
         })}
       </div>
       <p className="mt-4 text-xs text-muted">
-        Works start in a line in sandbox order. Drag any work anywhere on any wall, floor to ceiling, and everything stays where you leave it; works you add
-        after that wait above the walls until you drag them on. “Line them up again” starts over. Hover for its title, size and height of its centre. Where a
+        Works start in sandbox order: in one line if they fit, otherwise packed in rows floor to ceiling. Drag any work anywhere on any wall, and
+        everything stays where you leave it; works you add after that wait above the walls until you drag them on. “Line them up again” starts over. Hover for its title, size and height of its centre. Where a
         photo is clearly landscape but the size reads portrait (or the other way round), the photo wins.
       </p>
     </div>
