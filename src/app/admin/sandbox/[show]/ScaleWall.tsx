@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { saveSandboxLayout, saveWallSetup } from "../../actions";
 import { formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { SandboxWork } from "@/lib/queries";
-import { FLOOR, feetInches, hangWorks, startsOnFloor, realSize, UNKNOWN_SIZE, type Wall, type WallLayout, type WallSetup, type WallSpot } from "@/lib/walls";
+import { FLOOR, feetInches, fitIntoGaps, hangWorks, startsOnFloor, realSize, UNKNOWN_SIZE, type Wall, type WallLayout, type WallSetup, type WallSpot } from "@/lib/walls";
 
 /** Room left of each wall for the person drawn for scale, in inches. */
 const GUTTER = 26;
@@ -101,7 +101,10 @@ export function ScaleWall({
       });
   }
   auto?.walls.forEach((h, i) => h.placed.forEach((p) => onWall[i]?.push({ ...p, placed: false })));
-  const tray: Spot[] = (auto ? auto.leftover : unplaced).map((w) => ({ item: w, x: 0, y: 0, ...sized(w), placed: false }));
+  // After arranging has started, new works go into the first empty gap on a wall that fits them.
+  const gaps = arranging ? fitIntoGaps(unplaced, setup, onWall) : null;
+  gaps?.placed.forEach((p) => onWall[p.wall]?.push({ ...p, placed: false }));
+  const tray: Spot[] = (auto ? auto.leftover : (gaps?.leftover ?? [])).map((w) => ({ item: w, x: 0, y: 0, ...sized(w), placed: false }));
   const floor: Spot[] = onFloor.map((w) => ({ item: w, x: 0, y: 0, ...sized(w), placed: layout[w.id]?.wall === FLOOR }));
 
   const widest = Math.max(...walls.map((h) => h.wall.width));
@@ -245,7 +248,7 @@ export function ScaleWall({
         <div className="mb-6 rounded-lg bg-white/70 p-3 ring-1 ring-line">
           <p className="mb-2 text-xs text-muted">
             {tray.length} work{tray.length === 1 ? "" : "s"} not on a wall yet (shown to scale).{" "}
-            {arranging ? `Drag ${tray.length === 1 ? "it" : "them"} onto a wall.` : "There's no room left on the walls: drag works around to make space, or take some out of the sandbox."}
+            There&apos;s no free space big enough on the walls: drag works around to make room, put some on the floor, or take some out of the sandbox.
           </p>
           <div className="flex flex-wrap items-end gap-3">{tray.map((p) => renderWork(p, null, false))}</div>
         </div>
@@ -310,7 +313,7 @@ export function ScaleWall({
       </div>
       <p className="mt-4 text-xs text-muted">
         Works start in sandbox order: in one line if they fit, otherwise packed in rows floor to ceiling. Drag any work anywhere on any wall, and
-        everything stays where you leave it; works you add after that wait above the walls until you drag them on. “Line them up again” starts over. Hover for its title, size and height of its centre. Where a
+        everything stays where you leave it; works you add after that go into the first free gap on a wall. “Line them up again” starts over. Hover for its title, size and height of its centre. Where a
         photo is clearly landscape but the size reads portrait (or the other way round), the photo wins.
       </p>
     </div>
