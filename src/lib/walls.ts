@@ -236,3 +236,50 @@ export function parseLayout(raw: string | null | undefined): WallLayout {
     return {};
   }
 }
+
+type Rect = { x: number; y: number; width: number; height: number };
+
+/**
+ * Finds an empty spot for each work on walls that already have an arrangement, so works added
+ * later show up on a wall instead of waiting off to the side. Tries spots closest to the hanging
+ * height first, wall by wall, keeping `gap` inches clear of other works and the wall's edges.
+ * Works with no free spot come back in `leftover`.
+ */
+export function fitIntoGaps<T extends Sized>(
+  items: T[],
+  setup: WallSetup,
+  taken: Rect[][],
+): { placed: (Placed<T> & { wall: number })[]; leftover: T[] } {
+  const g = setup.gap;
+  const occupied = setup.walls.map((_, i) => [...(taken[i] ?? [])]);
+  const placed: (Placed<T> & { wall: number })[] = [];
+  const leftover: T[] = [];
+  const clear = (r: Rect, others: Rect[]) =>
+    others.every((o) => r.x + r.width + g <= o.x || o.x + o.width + g <= r.x || r.y + r.height + g <= o.y || o.y + o.height + g <= r.y);
+  for (const item of items) {
+    const size = realSize(item);
+    const { width, height } = size ?? UNKNOWN_SIZE;
+    let found: (Rect & { wall: number }) | null = null;
+    for (let wi = 0; wi < setup.walls.length && !found; wi++) {
+      const wall = setup.walls[wi];
+      if (width + 2 * g > wall.width || height + 2 * g > wall.height) continue;
+      // Candidate bottoms, nearest to centring on the hanging height first.
+      const ideal = Math.max(g, Math.min(wall.height - g - height, setup.center - height / 2));
+      const ys: number[] = [];
+      for (let y = g; y <= wall.height - g - height; y += 2) ys.push(y);
+      ys.sort((a, b) => Math.abs(a - ideal) - Math.abs(b - ideal));
+      for (const y of ys) {
+        for (let x = g; x <= wall.width - g - width && !found; x += 2) {
+          const r = { x, y, width, height };
+          if (clear(r, occupied[wi])) found = { ...r, wall: wi };
+        }
+        if (found) break;
+      }
+    }
+    if (found) {
+      occupied[found.wall].push(found);
+      placed.push({ item, x: found.x, y: found.y, width, height, known: !!size, wall: found.wall });
+    } else leftover.push(item);
+  }
+  return { placed, leftover };
+}
