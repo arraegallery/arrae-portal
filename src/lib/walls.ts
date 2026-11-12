@@ -107,7 +107,7 @@ export type HungWall<T> = {
 /**
  * Hangs works in order, one line per wall, centred at `center` inches, moving on to the next
  * wall when the next work won't fit. Works on a wall are spaced evenly across it. Anything that
- * doesn't fit on any wall goes on extra "overflow" walls the size of the last real one.
+ * doesn't fit on any wall goes on extra "overflow" walls as wide as the widest real one.
  */
 export function hangWorks<T extends Sized>(items: T[], setup: WallSetup): HungWall<T>[] {
   const out: {
@@ -115,7 +115,8 @@ export function hangWorks<T extends Sized>(items: T[], setup: WallSetup): HungWa
     overflow: boolean;
     items: { item: T; width: number; height: number; known: boolean }[];
   }[] = [];
-  const last = setup.walls[setup.walls.length - 1];
+  // Extra "doesn't fit" walls are as wide as the widest real wall.
+  const last = setup.walls.reduce((a, b) => (b.width > a.width ? b : a));
   let wi = 0;
   const wallAt = (i: number) =>
     i < setup.walls.length
