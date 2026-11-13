@@ -742,7 +742,7 @@ function FixSubmission({
               ))}
           </select>
           <p className="text-xs text-muted">
-            Decisions move with the works. {entry.application && allPicked ? "Their application moves too." : ""} If a work is already in that show, this just
+            Decisions move with the works. {entry.application && allPicked ? "Their application moves too (or merges into the one they already have there)." : ""} If a work is already in that show, this just
             removes the extra copy here.
           </p>
           <button
