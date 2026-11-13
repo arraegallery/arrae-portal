@@ -233,7 +233,18 @@ export async function moveWorksToShow(fromShowId: string, toShowId: string, work
     if (dupes.length) await tx.delete(s.showWorks).where(and(eq(s.showWorks.showId, fromShowId), inArray(s.showWorks.workId, dupes)));
     const rest = workIds.filter((id) => !dupes.includes(id));
     if (rest.length) await tx.update(s.showWorks).set({ showId: toShowId }).where(and(eq(s.showWorks.showId, fromShowId), inArray(s.showWorks.workId, rest)));
-    if (applicationId) await tx.update(s.applications).set({ showId: toShowId }).where(eq(s.applications.id, applicationId));
+    if (applicationId) {
+      // If the artist already applied to the target show, keep that application and drop the stray one
+      const [stray] = await tx.select({ artistId: s.applications.artistId }).from(s.applications).where(eq(s.applications.id, applicationId));
+      const [existing] = stray
+        ? await tx
+            .select({ id: s.applications.id })
+            .from(s.applications)
+            .where(and(eq(s.applications.showId, toShowId), eq(s.applications.artistId, stray.artistId)))
+        : [];
+      if (existing) await tx.delete(s.applications).where(eq(s.applications.id, applicationId));
+      else await tx.update(s.applications).set({ showId: toShowId }).where(eq(s.applications.id, applicationId));
+    }
   });
   const works = await db.select({ id: s.works.id, artistId: s.works.artistId, title: s.works.title }).from(s.works).where(inArray(s.works.id, workIds));
   for (const w of works) await log({ artistId: w.artistId, workId: w.id, showId: toShowId, kind: "move", body: `"${w.title}" moved to ${target.name}`, actor });
