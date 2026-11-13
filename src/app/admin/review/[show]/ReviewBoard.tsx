@@ -189,7 +189,7 @@ export function ReviewBoard({
           </div>
         </dl>
       </section>
-      <ShowTabs showId={show.id} active="review" sandboxCount={sandbox.size} />
+      <ShowTabs showId={show.id} active="review" sandboxCount={sandbox.size} newCount={entries.filter((e) => e.group === "New applicant" && e.application && e.application.status !== "Withdrawn").length} />
 
       <section className="z-20 -mx-4 md:sticky md:top-[57px] mb-6 mt-4 flex flex-wrap items-center gap-2 border-y border-line bg-paper/95 px-4 py-2 text-sm backdrop-blur">
         <div className="flex rounded-md bg-white p-0.5 ring-1 ring-line">
