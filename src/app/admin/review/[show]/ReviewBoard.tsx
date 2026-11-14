@@ -368,7 +368,7 @@ export function ReviewBoard({
         </div>
       )}
 
-      {artist && <ArtistDrawer entry={artist} showId={show.id} showName={show.name} onClose={() => setOpenArtist(null)} onDecide={updateApplication} onAddNote={(body) => saveNote(artist.artist.id, body)} onEmailed={(sent) => setEntries((es) => es.map((e) => (e.artist.id === artist.artist.id ? { ...e, notes: [sent, ...e.notes] } : e)))} shows={shows} artists={artists} onOpenWork={(id) => setOpenWork({ artistId: artist.artist.id, workId: id })} />}
+      {artist && <ArtistDrawer entry={artist} showId={show.id} showName={show.name} onClose={() => setOpenArtist(null)} onDecide={updateApplication} onAddNote={(body) => saveNote(artist.artist.id, body)} onEmailed={(sent) => setEntries((es) => es.map((e) => (e.artist.id === artist.artist.id ? { ...e, notes: [sent, ...e.notes] } : e)))} onApplication={(app) => setEntries((es) => es.map((e) => (e.artist.id === artist.artist.id && e.application ? { ...e, application: { ...e.application, status: app.status, extraWorksLeft: app.extraWorksLeft } } : e)))} shows={shows} artists={artists} onOpenWork={(id) => setOpenWork({ artistId: artist.artist.id, workId: id })} />}
     </main>
   );
 }
@@ -445,6 +445,7 @@ function ArtistDrawer({
   onDecide,
   onAddNote,
   onEmailed,
+  onApplication,
   shows,
   artists,
   onOpenWork,
@@ -456,6 +457,7 @@ function ArtistDrawer({
   onDecide: (artistId: string, applicationId: string, s: ApplicationStatus) => void;
   onAddNote: (body: string) => void;
   onEmailed: (sent: BoardEntry["notes"][number]) => void;
+  onApplication: (app: { status: ApplicationStatus; extraWorksLeft: number }) => void;
   shows: { id: string; name: string }[];
   artists: { id: string; name: string; email: string }[];
   onOpenWork: (workId: string) => void;
@@ -521,6 +523,8 @@ function ArtistDrawer({
           showName={showName}
           sent={entry.notes.filter((n) => n.kind === DIRECT_EMAIL_KIND)}
           onSent={onEmailed}
+          application={entry.application}
+          onApplication={onApplication}
         />
 
         <div className="mt-5 grid grid-cols-3 gap-2">

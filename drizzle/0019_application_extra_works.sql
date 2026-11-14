@@ -1,0 +1,1 @@
+ALTER TABLE "applications" ADD COLUMN "extra_works_left" integer DEFAULT 0 NOT NULL;

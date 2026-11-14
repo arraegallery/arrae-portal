@@ -131,6 +131,9 @@ function OpenCall({ show, works }: { show: OpenShow; works: Work[] }) {
   const [pending, start] = useTransition();
   const inShow = works.filter((w) => w.shows.some((x) => x.showId === show.id));
   const eligible = works.filter((w) => !w.sold && !w.archived && !w.shows.some((x) => x.showId === show.id));
+  const invite = show.invite;
+  // With an invitation, the artist can pick only as many works as they have left.
+  const full = !!invite && picked.size >= invite.left;
 
   const putForward = () =>
     start(async () => {
@@ -157,10 +160,19 @@ function OpenCall({ show, works }: { show: OpenShow; works: Work[] }) {
 
   return (
     <section className="rounded-xl bg-white p-5 ring-1 ring-line sm:p-6">
-      <p className="text-xs uppercase tracking-[0.2em] text-muted">Open for submissions</p>
+      <p className="text-xs uppercase tracking-[0.2em] text-muted">{invite ? "We'd love to see more of your work" : "Open for submissions"}</p>
       <h2 className="font-display text-3xl">{show.name}</h2>
-      {show.description && <p className="mt-2 max-w-2xl whitespace-pre-line text-sm">{show.description}</p>}
-      {show.deadline && <p className="mt-1 text-sm text-muted">Submit by {fmtDate(show.deadline)}</p>}
+      {invite ? (
+        <p className="mt-2 max-w-2xl rounded-md bg-teal-50 p-3 text-sm text-teal-900 ring-1 ring-teal-200">
+          You can add {invite.left === 1 ? "1 more work" : `up to ${invite.left} more works`} to your application for {show.name}. Put forward a past work or
+          submit a new one below.
+        </p>
+      ) : (
+        <>
+          {show.description && <p className="mt-2 max-w-2xl whitespace-pre-line text-sm">{show.description}</p>}
+          {show.deadline && <p className="mt-1 text-sm text-muted">Submit by {fmtDate(show.deadline)}</p>}
+        </>
+      )}
 
       {inShow.length > 0 && (
         <div className="mt-5">
@@ -205,7 +217,7 @@ function OpenCall({ show, works }: { show: OpenShow; works: Work[] }) {
                           setPicked((p) => {
                             const n = new Set(p);
                             if (n.has(w.id)) n.delete(w.id);
-                            else n.add(w.id);
+                            else if (!full) n.add(w.id);
                             return n;
                           })
                         }
