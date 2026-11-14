@@ -10,6 +10,7 @@ import { STATUS_TONE } from "@/lib/status";
 import { ShowTabs } from "@/components/ShowTabs";
 import type { WallLayout, WallSetup } from "@/lib/walls";
 import { ScaleWall } from "./ScaleWall";
+import { FinalizePanel, WorkDetailsPanel, needsAcceptance } from "./SandboxPanels";
 
 type Show = { id: string; name: string; type: string };
 type Source = "all" | "show" | "waitlist" | "roster";
@@ -48,6 +49,8 @@ export function SandboxBoard({
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropHint, setDropHint] = useState(false);
   const [openNote, setOpenNote] = useState<string | null>(null);
+  const [openWork, setOpenWork] = useState<string | null>(null);
+  const [finalizing, setFinalizing] = useState(false);
   // "cards" or the to-scale wall; remembered on this computer.
   const [view, setView] = useState<"cards" | "scale">("cards");
   useEffect(() => {
@@ -264,7 +267,7 @@ export function SandboxBoard({
               {selected.size
                 ? `${selected.size} selected`
                 : view === "scale"
-                  ? "Drag works anywhere on the wall. Click one to select it."
+                  ? "Drag works anywhere on the wall. Click one for its details."
                   : "Tip: drag cards to reorder, or drag works in from the right."}
             </span>
             <div className="ml-auto flex gap-2">
@@ -285,6 +288,14 @@ export function SandboxBoard({
               >
                 {selected.size ? `Make ${selected.size} possible choice${selected.size === 1 ? "" : "s"}` : "Make all possible choices"}
               </button>
+              <button
+                disabled={!items.length}
+                onClick={() => setFinalizing(true)}
+                title="Make every work in the sandbox Selected for this show"
+                className="rounded-md bg-emerald-700 px-3 py-1.5 text-white disabled:opacity-40"
+              >
+                Finalize…
+              </button>
             </div>
           </div>
 
@@ -300,7 +311,7 @@ export function SandboxBoard({
               layout={layout}
               showId={show.id}
               selected={selected}
-              onToggle={toggleSelect}
+              onOpen={setOpenWork}
             />
           ) : (
             <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
@@ -325,7 +336,11 @@ export function SandboxBoard({
                       isSel ? "ring-2 ring-ink" : "ring-line"
                     } ${dragging === w.id ? "opacity-40" : ""}`}
                   >
-                    <div className="flex aspect-square items-center justify-center overflow-hidden bg-[#f3f0ea]">
+                    <div
+                      onClick={() => setOpenWork(w.id)}
+                      title="Click for details"
+                      className="flex aspect-square cursor-pointer items-center justify-center overflow-hidden bg-[#f3f0ea]"
+                    >
                       <ArtworkImage
                         image={w.image ?? undefined}
                         title={w.title}
@@ -353,6 +368,11 @@ export function SandboxBoard({
                       <p className="truncate text-xs text-muted">
                         {formatSize(w)} · {formatPrice(w.price)}
                       </p>
+                      {needsAcceptance(w) && (
+                        <p className="mt-1 truncate rounded bg-red-50 px-1.5 py-0.5 text-[11px] text-red-800 ring-1 ring-red-200" title="First show with ARRAE: accept the artist before finalizing">
+                          New artist · not accepted yet
+                        </p>
+                      )}
                       <div className="mt-2 flex items-center gap-1.5">
                         {st && DECIDED.includes(st) ? (
                           <span className={`rounded-full px-2 py-0.5 text-xs ring-1 ${STATUS_TONE[st]}`}>{st === "Shortlist" ? "Possible choice" : st}</span>
@@ -452,7 +472,7 @@ export function SandboxBoard({
                 className="group relative cursor-grab overflow-hidden rounded-md bg-paper ring-1 ring-line"
                 title={`${w.artistName}, ${w.title}${w.pastShows.length ? ` · shown in ${w.pastShows.join(", ")}` : ""}`}
               >
-                <div className="flex aspect-square items-center justify-center overflow-hidden bg-[#f3f0ea]">
+                <div onClick={() => setOpenWork(w.id)} className="flex aspect-square cursor-pointer items-center justify-center overflow-hidden bg-[#f3f0ea]">
                   <ArtworkImage image={w.image ?? undefined} title={w.title} fallbackRatio={w.width && w.height ? w.width / w.height : null} className="max-h-full w-auto object-contain" />
                 </div>
                 <div className="px-1.5 py-1">
@@ -482,6 +502,17 @@ export function SandboxBoard({
           )}
         </aside>
       </div>
+      {finalizing && <FinalizePanel show={{ id: show.id, name: show.name }} items={items} onClose={() => setFinalizing(false)} />}
+      {openWork && byId.get(openWork) && (
+        <WorkDetailsPanel
+          work={byId.get(openWork)!}
+          inSandbox={inSandbox.has(openWork)}
+          selected={selected.has(openWork)}
+          onToggleSelect={() => toggleSelect(openWork)}
+          onAdd={() => add(openWork)}
+          onClose={() => setOpenWork(null)}
+        />
+      )}
     </main>
   );
 }

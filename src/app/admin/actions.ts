@@ -1,6 +1,6 @@
 "use server";
 
-import { and, asc, eq, gt, inArray, isNull, lt, desc, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lt, desc, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema as s } from "@/db";
 import { requireOwner, requireTeam } from "@/lib/team";
@@ -15,6 +15,8 @@ import { attachPhotos, createPhotoSlots, listPhotos, makeMainPhoto, removePhoto,
 import { DIRECT_EMAIL_KIND, MORE_WORKS, directEmailBody } from "@/lib/direct-email";
 import { personalize, renderEmail, renderText, sendEmails, type EmailContent } from "@/lib/email";
 import { oneClickUrl, optedOut, unsubscribeUrl } from "@/lib/unsubscribe";
+import { finalizeConflicts, type FinalizeWork } from "@/lib/finalize";
+import { signedImageUrls } from "@/lib/images";
 import { WALLS_KEY, layoutKey, parseLayout, parseWallSetup, type WallLayout, type WallSetup } from "@/lib/walls";
 
 async function log(entry: { artistId?: string | null; workId?: string | null; showId?: string | null; kind: string; body: string; actor: string }) {
@@ -201,6 +203,88 @@ export async function promoteFromSandbox(showId: string, workIds: string[]) {
   const works = await db.select({ id: s.works.id, artistId: s.works.artistId, title: s.works.title }).from(s.works).where(inArray(s.works.id, [...toInsert, ...toUpdate].length ? [...toInsert, ...toUpdate] : ["-"]));
   for (const w of works) await log({ artistId: w.artistId, workId: w.id, showId, kind: "status", body: `"${w.title}" made a possible choice from the sandbox`, actor });
   revalidatePath("/admin", "layout");
+}
+
+/** Accept a first-time artist for a show (their application becomes Selected), creating the application if they never sent one. */
+export async function acceptArtistForShow(showId: string, artistId: string) {
+  await requireOwner();
+  const appId = await ensureApplication(artistId, showId);
+  await setApplicationStatus(appId, "Selected");
+}
+
+/** What the sandbox finalize check sees, worked out on the server so it can't be skipped. */
+async function sandboxFinalizeWorks(showId: string): Promise<FinalizeWork[]> {
+  const ids = (await db.select({ id: s.sandboxItems.workId }).from(s.sandboxItems).where(eq(s.sandboxItems.showId, showId))).map((r) => r.id);
+  if (!ids.length) return [];
+  const works = await db.select({ id: s.works.id, title: s.works.title, artistId: s.works.artistId }).from(s.works).where(inArray(s.works.id, ids));
+  const artistIds = [...new Set(works.map((w) => w.artistId).filter((x): x is string => !!x))];
+  if (!artistIds.length) return works.map((w) => ({ ...w, artistName: "Unknown artist", artistKind: "new" as const, application: null }));
+  const [artists, apps, pastWorks] = await Promise.all([
+    db.select({ id: s.artists.id, name: s.artists.name }).from(s.artists).where(inArray(s.artists.id, artistIds)),
+    db.select({ id: s.applications.id, artistId: s.applications.artistId, showId: s.applications.showId, status: s.applications.status }).from(s.applications).where(inArray(s.applications.artistId, artistIds)),
+    db
+      .select({ artistId: s.works.artistId })
+      .from(s.showWorks)
+      .innerJoin(s.works, eq(s.works.id, s.showWorks.workId))
+      .where(and(inArray(s.works.artistId, artistIds), eq(s.showWorks.status, "Selected"), ne(s.showWorks.showId, showId))),
+  ]);
+  const name = new Map(artists.map((a) => [a.id, a.name]));
+  const roster = new Set([...apps.filter((a) => a.status === "Selected" && a.showId !== showId).map((a) => a.artistId), ...pastWorks.map((x) => x.artistId!)]);
+  const here = new Map(apps.filter((a) => a.showId === showId).map((a) => [a.artistId, { id: a.id, status: a.status }]));
+  return works.map((w) => ({
+    id: w.id,
+    title: w.title,
+    artistId: w.artistId,
+    artistName: (w.artistId && name.get(w.artistId)) || "Unknown artist",
+    artistKind: w.artistId && roster.has(w.artistId) ? ("roster" as const) : ("new" as const),
+    application: (w.artistId && here.get(w.artistId)) || null,
+  }));
+}
+
+/**
+ * Finalize a show from its sandbox: every work in the sandbox becomes Selected for the show.
+ * Refused while any first-time artist in it hasn't been accepted for the show. Works already in the
+ * show but not in the sandbox are left as they are. Artists still see nothing until decisions are released.
+ */
+export async function finalizeSandbox(showId: string) {
+  const actor = await requireOwner();
+  const works = await sandboxFinalizeWorks(showId);
+  if (!works.length) throw new Error("The sandbox is empty");
+  const conflicts = finalizeConflicts(works);
+  if (conflicts.length) throw new Error(`Accept these artists first: ${conflicts.map((c) => c.artistName).join(", ")}`);
+  const ids = works.map((w) => w.id);
+  const existing = new Set(
+    (await db.select({ id: s.showWorks.workId }).from(s.showWorks).where(and(eq(s.showWorks.showId, showId), inArray(s.showWorks.workId, ids)))).map((r) => r.id),
+  );
+  const now = new Date();
+  const toInsert = ids.filter((id) => !existing.has(id));
+  if (toInsert.length) await db.insert(s.showWorks).values(toInsert.map((workId) => ({ showId, workId, status: "Selected" as const, decidedAt: now })));
+  if (existing.size)
+    await db
+      .update(s.showWorks)
+      .set({ status: "Selected", decidedAt: now })
+      .where(and(eq(s.showWorks.showId, showId), inArray(s.showWorks.workId, [...existing]), ne(s.showWorks.status, "Selected")));
+  // Anyone who applied to this show and has a work selected now has their application Selected too,
+  // so the application and its works agree when decisions are released.
+  const openApps = new Map(works.filter((w) => w.application && w.application.status !== "Selected").map((w) => [w.application!.id, w.artistId!]));
+  if (openApps.size) {
+    await db.update(s.applications).set({ status: "Selected", decidedAt: now }).where(inArray(s.applications.id, [...openApps.keys()]));
+    for (const artistId of new Set(openApps.values())) await removeFromWaitlist(artistId);
+  }
+  await log({ showId, kind: "show", body: `Finalized from the sandbox: ${ids.length} works selected`, actor });
+  revalidatePath("/admin", "layout");
+  return ids.length;
+}
+
+/** The big photo and description for the sandbox's work details panel. */
+export async function sandboxWorkDetails(workId: string) {
+  await requireOwner();
+  const [[img], [w]] = await Promise.all([
+    db.select().from(s.workImages).where(and(eq(s.workImages.workId, workId), eq(s.workImages.position, 0))),
+    db.select({ description: s.works.description, year: s.works.year }).from(s.works).where(eq(s.works.id, workId)),
+  ]);
+  const [full] = await signedImageUrls([img?.storagePath ?? null]);
+  return { full, description: w?.description ?? null, year: w?.year ?? null };
 }
 
 export async function createShow(name: string, type: "Volume" | "Takeover" | "ARRAE Finds") {
