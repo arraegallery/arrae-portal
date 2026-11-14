@@ -5,7 +5,15 @@
 
 export const WALLS_KEY = "gallery_walls";
 
-export type Wall = { name: string; width: number; height: number };
+export type Wall = {
+  name: string;
+  width: number;
+  height: number;
+  /** Hidden walls stay in the list but nothing hangs on them (e.g. blocked for this show). */
+  hidden?: boolean;
+  /** This is the other side of the wall listed just before it (a floating wall): shown next to it. */
+  backOf?: boolean;
+};
 export type WallSetup = {
   walls: Wall[];
   /** Smallest space between two works on the same wall. */
@@ -37,6 +45,8 @@ export function parseWallSetup(raw: string | null | undefined): WallSetup {
       name: String(w?.name ?? "").slice(0, 60) || `Wall ${i + 1}`,
       width: num(w?.width, 12, 2400, 240),
       height: num(w?.height, 12, 600, 96),
+      ...(w?.hidden ? { hidden: true } : {}),
+      ...(w?.backOf && i > 0 ? { backOf: true } : {}),
     }));
     return {
       walls: walls.length ? walls : DEFAULT_WALLS.walls,
@@ -113,6 +123,10 @@ function hangInLine<T>(entries: Entry<T>[], setup: WallSetup): Row<T>[][] | null
   let wi = 0;
   for (const e of entries) {
     while (wi < setup.walls.length) {
+      if (setup.walls[wi].hidden) {
+        wi++;
+        continue;
+      }
       const row = walls[wi][0];
       const need = (row ? row.width + e.width : e.width) + setup.gap * ((row?.items.length ?? 0) + 2);
       if (need <= setup.walls[wi].width && e.height + 2 * setup.gap <= setup.walls[wi].height) break;
@@ -139,6 +153,7 @@ function hangInRows<T>(entries: Entry<T>[], setup: WallSetup): { walls: Row<T>[]
   // Where would this work go on wall wi? "row" = end of the last row, "new" = a new row, null = no room.
   const fit = (e: Entry<T>, wi: number): "row" | "new" | null => {
     const wall = setup.walls[wi];
+    if (wall.hidden) return null;
     const rows = walls[wi];
     const row = rows[rows.length - 1];
     if (row && row.width + e.width + g * (row.items.length + 2) <= wall.width && stackHeight(rows) - row.height + Math.max(row.height, e.height) <= wall.height)
@@ -262,6 +277,7 @@ export function fitIntoGaps<T extends Sized>(
     let found: (Rect & { wall: number }) | null = null;
     for (let wi = 0; wi < setup.walls.length && !found; wi++) {
       const wall = setup.walls[wi];
+      if (wall.hidden) continue;
       if (width + 2 * g > wall.width || height + 2 * g > wall.height) continue;
       // Candidate bottoms, nearest to centring on the hanging height first.
       const ideal = Math.max(g, Math.min(wall.height - g - height, setup.center - height / 2));
@@ -282,4 +298,20 @@ export function fitIntoGaps<T extends Sized>(
     } else leftover.push(item);
   }
   return { placed, leftover };
+}
+
+/**
+ * Moves saved positions to follow their walls after the wall list is reordered or walls are removed.
+ * `remap[old]` is the wall's new index, or null if it was removed (its works go back to finding a free spot).
+ */
+export function remapLayout(layout: WallLayout, remap: (number | null)[]): WallLayout {
+  const out: WallLayout = {};
+  for (const [id, s] of Object.entries(layout)) {
+    if (s.wall === FLOOR) out[id] = s;
+    else {
+      const to = remap[s.wall];
+      if (to != null) out[id] = { ...s, wall: to };
+    }
+  }
+  return out;
 }

@@ -1,6 +1,6 @@
 "use server";
 
-import { and, asc, eq, gt, inArray, isNull, lt, desc, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lt, desc, like, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema as s } from "@/db";
 import { requireOwner, requireTeam } from "@/lib/team";
@@ -17,7 +17,7 @@ import { personalize, renderEmail, renderText, sendEmails, type EmailContent } f
 import { oneClickUrl, optedOut, unsubscribeUrl } from "@/lib/unsubscribe";
 import { finalizeConflicts, type FinalizeWork } from "@/lib/finalize";
 import { signedImageUrls } from "@/lib/images";
-import { WALLS_KEY, layoutKey, parseLayout, parseWallSetup, type WallLayout, type WallSetup } from "@/lib/walls";
+import { WALLS_KEY, layoutKey, parseLayout, parseWallSetup, remapLayout, type WallLayout, type WallSetup } from "@/lib/walls";
 
 async function log(entry: { artistId?: string | null; workId?: string | null; showId?: string | null; kind: string; body: string; actor: string }) {
   await db.insert(s.activity).values(entry);
@@ -116,10 +116,18 @@ export async function removeFromWaitlistAction(artistId: string) {
 // ---- Sandbox: a private scratch space per show. Nothing here is a decision. ----
 
 /** Saves the gallery's wall measurements for the sandbox's to-scale view. */
-export async function saveWallSetup(setup: WallSetup) {
+/** `remap[old wall index]` = new index (or null if removed), so every show's arrangement follows its walls. */
+export async function saveWallSetup(setup: WallSetup, remap?: (number | null)[]) {
   await requireOwner();
   const value = JSON.stringify(parseWallSetup(JSON.stringify({ ...setup, measured: true })));
   await db.insert(s.appSettings).values({ key: WALLS_KEY, value }).onConflictDoUpdate({ target: s.appSettings.key, set: { value } });
+  if (remap && remap.some((to, i) => to !== i)) {
+    const saved = await db.select().from(s.appSettings).where(like(s.appSettings.key, "sandbox_layout:%"));
+    for (const row of saved) {
+      const next = JSON.stringify(remapLayout(parseLayout(row.value), remap));
+      if (next !== row.value) await db.update(s.appSettings).set({ value: next }).where(eq(s.appSettings.key, row.key));
+    }
+  }
   revalidatePath("/admin/sandbox", "layout");
 }
 
