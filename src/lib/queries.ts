@@ -41,7 +41,7 @@ export type BoardEntry = {
     internalNotes: string | null;
     shopifyCollectionHandle: string | null;
   };
-  application: { id: string; status: ApplicationStatus; submittedOn: string | null; flag: string | null } | null;
+  application: { id: string; status: ApplicationStatus; submittedOn: string | null; flag: string | null; extraWorksLeft: number } | null;
   group: "New applicant" | "Roster artist";
   onWaitlist: boolean;
   works: BoardWork[];
@@ -120,7 +120,7 @@ export async function getBoard(showId: string) {
         internalNotes: a.internalNotes,
         shopifyCollectionHandle: a.shopifyCollectionHandle,
       },
-      application: app ? { id: app.id, status: app.status, submittedOn: app.submittedOn, flag: app.flag } : null,
+      application: app ? { id: app.id, status: app.status, submittedOn: app.submittedOn, flag: app.flag, extraWorksLeft: app.extraWorksLeft } : null,
       group: rosterSet.has(a.id) ? "Roster artist" : "New applicant",
       onWaitlist: waitingSet.has(a.id),
       works: rows

@@ -136,6 +136,9 @@ export function NewApplicants({
   function addSent(entry: BoardEntry, sent: BoardEntry["notes"][number]) {
     setEntries((es) => es.map((e) => (e.artist.id === entry.artist.id ? { ...e, notes: [sent, ...e.notes] } : e)));
   }
+  function updateApp(entry: BoardEntry, app: { status: ApplicationStatus; extraWorksLeft: number }) {
+    setEntries((es) => es.map((e) => (e.artist.id === entry.artist.id && e.application ? { ...e, application: { ...e.application, ...app } } : e)));
+  }
 
   // Escape closes the large view; arrows step through this artist's works.
   useEffect(() => {
@@ -254,6 +257,7 @@ export function NewApplicants({
               onNote={(b) => saveNote(current, b)}
               showId={show.id}
               onEmailed={(sent) => addSent(current, sent)}
+              onApplication={(app) => updateApp(current, app)}
             />
           ) : (
             <p className="rounded-lg bg-white p-10 text-center text-muted ring-1 ring-line">Pick an applicant on the left to see their bio and works.</p>
@@ -295,6 +299,7 @@ function Applicant({
   onNote,
   showId,
   onEmailed,
+  onApplication,
 }: {
   entry: BoardEntry;
   showName: string;
@@ -309,6 +314,7 @@ function Applicant({
   onNote: (body: string) => void;
   showId: string;
   onEmailed: (sent: BoardEntry["notes"][number]) => void;
+  onApplication: (app: { status: ApplicationStatus; extraWorksLeft: number }) => void;
 }) {
   const a = entry.artist;
   const app = entry.application!;
@@ -476,6 +482,8 @@ function Applicant({
             showName={showName}
             sent={entry.notes.filter((n) => n.kind === DIRECT_EMAIL_KIND)}
             onSent={onEmailed}
+            application={app}
+            onApplication={onApplication}
           />
         </div>
       </section>

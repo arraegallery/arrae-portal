@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db, schema as s } from "@/db";
 import { requireArtist } from "@/lib/artist-auth";
@@ -32,20 +32,57 @@ async function myWorks(workIds: string[]) {
   return { me, rows };
 }
 
-async function openShow(showId: string) {
+/**
+ * A show this artist may add works to: one that's open to everyone, or one where ARRAE has
+ * invited them to add more works to their application (that works even after it closes).
+ * `adding` is how many works are about to go in; an invitation only covers what's left of it.
+ */
+async function showForArtist(showId: string, artistIds: string[], adding: number) {
   const [show] = await db.select().from(s.shows).where(eq(s.shows.id, showId));
-  if (!show || !show.openForSubmissions) throw new Error("That show isn't taking submissions right now");
-  return show;
+  if (!show) throw new Error("That show isn't taking submissions right now");
+  const [app] = await db
+    .select({ id: s.applications.id, left: s.applications.extraWorksLeft })
+    .from(s.applications)
+    .where(and(eq(s.applications.showId, showId), inArray(s.applications.artistId, artistIds)))
+    .orderBy(desc(s.applications.extraWorksLeft))
+    .limit(1);
+  if (app && app.left > 0) {
+    if (adding > app.left) throw new Error(`You can add ${app.left} more work${app.left === 1 ? "" : "s"} for ${show.name}. Please pick fewer.`);
+    return { show, invite: app };
+  }
+  if (!show.openForSubmissions) throw new Error("That show isn't taking submissions right now");
+  return { show, invite: null };
+}
+
+/** Uses up part of an invitation to add works, and lets ARRAE know what came in. */
+async function useInvite(invite: { id: string } | null, used: number, artistName: string, show: { id: string; name: string }, titles: string[]) {
+  if (!invite || used <= 0) return;
+  await db
+    .update(s.applications)
+    .set({ extraWorksLeft: sql`greatest(${s.applications.extraWorksLeft} - ${used}, 0)` })
+    .where(eq(s.applications.id, invite.id));
+  await notifyEmail(arraeRecipients(), {
+    subject: `${artistName} added ${used === 1 ? "a work" : `${used} works`} for ${show.name}`,
+    heading: `${artistName} sent more work`,
+    body: `You asked ${artistName} for more works for ${show.name}. They added:\n\n${titles.map((t) => `• ${t}`).join("\n")}`,
+    buttonLabel: "Review them",
+    buttonUrl: portalUrl(`/admin/review/${show.id}`),
+  });
 }
 
 /** Offer past, still-available works for an open show. */
 export async function putForwardWorks(workIds: string[], showId: string) {
   const { me, rows } = await myWorks(workIds);
-  const show = await openShow(showId);
   const available = rows.filter((w) => !w.soldAt && !w.archivedAt);
+  const { show, invite } = await showForArtist(showId, me.artistIds, available.length);
   if (!available.length) throw new Error("Choose at least one available work");
-  await db.insert(s.showWorks).values(available.map((w) => ({ showId, workId: w.id, status: "Submitted" as const }))).onConflictDoNothing();
+  const added = await db
+    .insert(s.showWorks)
+    .values(available.map((w) => ({ showId, workId: w.id, status: "Submitted" as const })))
+    .onConflictDoNothing()
+    .returning({ workId: s.showWorks.workId });
   await ensureApplication(me.artist.id, showId);
+  await useInvite(invite, added.length, me.artist.name, show, available.filter((w) => added.some((a) => a.workId === w.id)).map((w) => w.title));
   for (const w of available) await logActivity({ artistId: w.artistId, workId: w.id, showId, kind: "submission", body: `Artist put "${w.title}" forward for ${show.name}`, actor: me.email });
   revalidatePath("/studio");
   revalidatePath(`/admin/review/${showId}`);
@@ -54,12 +91,21 @@ export async function putForwardWorks(workIds: string[], showId: string) {
 /** Take a work back out of a show, only while ARRAE hasn't reviewed it yet. */
 export async function withdrawWork(workId: string, showId: string) {
   const { me, rows } = await myWorks([workId]);
-  await openShow(showId);
+  const [show] = await db.select().from(s.shows).where(eq(s.shows.id, showId));
+  const [app] = await db
+    .select({ id: s.applications.id, status: s.applications.status })
+    .from(s.applications)
+    .where(and(eq(s.applications.showId, showId), inArray(s.applications.artistId, me.artistIds)))
+    .limit(1);
+  // After a show closes, only an artist ARRAE asked for more works can swap one back out.
+  const invited = !show?.openForSubmissions && app?.status === "Request other works";
+  if (!show || (!show.openForSubmissions && !invited)) throw new Error("That show isn't taking submissions right now");
   const deleted = await db
     .delete(s.showWorks)
     .where(and(eq(s.showWorks.workId, workId), eq(s.showWorks.showId, showId), eq(s.showWorks.status, "Submitted")))
     .returning();
   if (!deleted.length) throw new Error("This work is already being reviewed. Send us a message if you need to change it.");
+  if (invited && app) await db.update(s.applications).set({ extraWorksLeft: sql`${s.applications.extraWorksLeft} + 1` }).where(eq(s.applications.id, app.id));
   await logActivity({ artistId: rows[0].artistId, workId, showId, kind: "submission", body: `Artist withdrew "${rows[0].title}"`, actor: me.email });
   revalidatePath("/studio");
 }
@@ -152,7 +198,8 @@ async function saveNewWork(input: NewWork) {
   if (input.images.some((i) => !i.path.startsWith(prefix) || (i.thumbPath && !i.thumbPath.startsWith(prefix)))) throw new Error("Those photos don't belong to this work");
   const [exists] = await db.select({ id: s.works.id }).from(s.works).where(eq(s.works.id, input.workId));
   if (exists) throw new Error("This work was already saved");
-  const show = input.showId ? await openShow(input.showId) : null;
+  const target = input.showId ? await showForArtist(input.showId, me.artistIds, 1) : null;
+  const show = target?.show ?? null;
   const price = num(input.price, "Price");
   await db.insert(s.works).values({
     id: input.workId,
@@ -175,6 +222,7 @@ async function saveNewWork(input: NewWork) {
   if (show) {
     await db.insert(s.showWorks).values({ showId: show.id, workId: input.workId, status: "Submitted" }).onConflictDoNothing();
     await ensureApplication(me.artist.id, show.id);
+    await useInvite(target!.invite, 1, me.artist.name, show, [title]);
   }
   await logActivity({ artistId: me.artist.id, workId: input.workId, showId: show?.id, kind: "submission", body: `Artist submitted a new work, "${title}"${show ? ` for ${show.name}` : ""}`, actor: me.email });
   revalidatePath("/studio");

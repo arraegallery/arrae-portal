@@ -27,6 +27,12 @@ export async function getStudio(artistIds: string[]) {
     const app = apps.find((a) => a.showId === showId);
     return !!show?.decisionsReleased || !!app?.artistNotifiedAt;
   };
+  /** ARRAE invited them to add works to this show's application: how many they may still add. */
+  const inviteFor = (showId: string) => {
+    const app = apps.find((a) => a.showId === showId && a.extraWorksLeft > 0);
+    return app ? { left: app.extraWorksLeft } : null;
+  };
+  const askedForMore = (showId: string) => apps.some((a) => a.showId === showId && a.status === "Request other works");
   const softWork = (status: WorkStatus, showId: string) => {
     if (released(showId)) return artistFacingWork(status, showById.get(showId)?.name);
     return status === "Submitted" ? "Received" : "Under review";
@@ -36,9 +42,18 @@ export async function getStudio(artistIds: string[]) {
 
   return {
     shows: shows.map((x) => ({ id: x.id, name: x.name, type: x.type, open: x.openForSubmissions, description: x.description, deadline: x.applicationDeadline, opensOn: x.opensOn })),
+    // Open calls, plus any show where ARRAE asked this artist for more works (even once it has closed).
     openShows: shows
-      .filter((x) => x.openForSubmissions)
-      .map((x) => ({ id: x.id, name: x.name, type: x.type, description: x.description, deadline: x.applicationDeadline, opensOn: x.opensOn })),
+      .filter((x) => x.openForSubmissions || inviteFor(x.id))
+      .map((x) => ({
+        id: x.id,
+        name: x.name,
+        type: x.type,
+        description: x.description,
+        deadline: x.applicationDeadline,
+        opensOn: x.opensOn,
+        invite: inviteFor(x.id),
+      })),
     applications: apps
       .filter((a) => a.showId)
       .map((a) => ({
@@ -71,7 +86,7 @@ export async function getStudio(artistIds: string[]) {
           name: showById.get(x.showId)?.name ?? x.showId,
           label: softWork(x.status as WorkStatus, x.showId),
           // Artists can take a work back out only before ARRAE has looked at it.
-          canWithdraw: x.status === "Submitted" && !!showById.get(x.showId)?.openForSubmissions,
+          canWithdraw: x.status === "Submitted" && (!!showById.get(x.showId)?.openForSubmissions || askedForMore(x.showId)),
         })),
     })),
     messages: messages.map((m) => ({ id: m.id, sender: m.sender as "arrae" | "artist", body: m.body, at: m.createdAt.toISOString(), read: !!m.readByArtistAt })),

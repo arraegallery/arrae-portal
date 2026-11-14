@@ -6,13 +6,13 @@ import { db, schema as s } from "@/db";
 import { requireOwner, requireTeam } from "@/lib/team";
 import { APPLICATION_STATUSES, WORK_STATUSES, type ApplicationStatus, type WorkStatus } from "@/lib/status";
 import { ensureApplication } from "@/lib/applications";
-import { notifyNewMessage } from "@/lib/notify";
+import { notifyNewMessage, portalUrl } from "@/lib/notify";
 import { nudgeContent } from "@/lib/apply-nudge";
 import { parseAmount } from "@/lib/amount";
 import { ARTIST_ONBOARDING, SHOW_ONBOARDING, readOnboarding } from "@/lib/onboarding";
 import { recordWorkChanges, TRACKED_FIELDS } from "@/lib/changes";
 import { attachPhotos, createPhotoSlots, listPhotos, makeMainPhoto, removePhoto, worksByIds, type UploadedPhoto } from "@/lib/photos";
-import { DIRECT_EMAIL_KIND, directEmailBody } from "@/lib/direct-email";
+import { DIRECT_EMAIL_KIND, MORE_WORKS, directEmailBody } from "@/lib/direct-email";
 import { personalize, renderEmail, renderText, sendEmails, type EmailContent } from "@/lib/email";
 import { oneClickUrl, optedOut, unsubscribeUrl } from "@/lib/unsubscribe";
 import { WALLS_KEY, layoutKey, parseLayout, parseWallSetup, type WallLayout, type WallSetup } from "@/lib/walls";
@@ -41,7 +41,8 @@ export async function setApplicationStatus(applicationId: string, status: Applic
   if (before?.status === status) return;
   const [app] = await db
     .update(s.applications)
-    .set({ status, decidedAt: new Date() })
+    // Any other decision closes an invitation to add more works.
+    .set({ status, decidedAt: new Date(), ...(status === "Request other works" ? {} : { extraWorksLeft: 0 }) })
     .where(eq(s.applications.id, applicationId))
     .returning();
   if (!app) throw new Error("Application not found");
@@ -462,7 +463,7 @@ export async function sendMessageToArtist(artistId: string, body: string) {
 }
 
 /** Emails one artist straight from the review page (replies go to hello@), and keeps a copy on their history. */
-export async function emailArtist(artistId: string, subject: string, message: string, showId?: string) {
+export async function emailArtist(artistId: string, subject: string, message: string, showId?: string, allowMoreWorks = false) {
   const actor = await requireOwner();
   const subj = subject.trim().slice(0, 200);
   const text = message.trim().slice(0, 10000);
@@ -472,15 +473,50 @@ export async function emailArtist(artistId: string, subject: string, message: st
   if (!artist) throw new Error("Unknown artist");
   const to = artist.email.trim();
   if (!to.includes("@")) throw new Error("This artist has no email address on file");
-  const content = { subject: personalize(subj, artist.name), body: personalize(text, artist.name) };
+  let show: { id: string; name: string } | null = null;
+  if (allowMoreWorks) {
+    if (!showId) throw new Error("Open this from a show's review page to invite more works");
+    [show] = await db.select({ id: s.shows.id, name: s.shows.name }).from(s.shows).where(eq(s.shows.id, showId));
+    if (!show) throw new Error("Unknown show");
+  }
+  const invite = show
+    ? `\n\nYou can add up to ${MORE_WORKS} more works to your application for ${show.name}. Sign in to your ARRAE studio with this email address (${to}), then put forward a past work or choose “Add a new work”.`
+    : "";
+  const content = {
+    subject: personalize(subj, artist.name),
+    body: personalize(text, artist.name) + invite,
+    ...(show ? { buttonLabel: "Add your works", buttonUrl: portalUrl("/studio") } : {}),
+  };
   const { sent, failures } = await sendEmails([{ to, subject: content.subject, html: renderEmail(content), text: renderText(content) }]);
   if (!sent) throw new Error(`The email didn't go out: ${failures[0]?.error ?? "unknown error"}`);
+  let application: { id: string; status: ApplicationStatus; extraWorksLeft: number } | null = null;
+  if (show) {
+    const appId = await ensureApplication(artistId, show.id);
+    [application] = await db
+      .update(s.applications)
+      .set({ status: "Request other works", decidedAt: new Date(), extraWorksLeft: MORE_WORKS })
+      .where(eq(s.applications.id, appId))
+      .returning({ id: s.applications.id, status: s.applications.status, extraWorksLeft: s.applications.extraWorksLeft });
+    await log({ artistId, showId: show.id, kind: "status", body: `Asked for other works: the artist can add up to ${MORE_WORKS} more works`, actor });
+    revalidatePath("/admin", "layout");
+    revalidatePath("/studio");
+  }
   const [row] = await db
     .insert(s.activity)
     .values({ artistId, showId: showId ?? null, kind: DIRECT_EMAIL_KIND, body: directEmailBody(content.subject, content.body, to), actor })
     .returning();
   revalidatePath(`/admin/artists/${artistId}`);
-  return { id: row.id, body: row.body, actor, kind: row.kind, workId: null, createdAt: row.createdAt.toISOString() };
+  return { entry: { id: row.id, body: row.body, actor, kind: row.kind, workId: null, createdAt: row.createdAt.toISOString() }, application };
+}
+
+/** Stops an invitation to add more works, so the artist can't add any more to this application. */
+export async function stopMoreWorks(applicationId: string) {
+  const actor = await requireOwner();
+  const [app] = await db.update(s.applications).set({ extraWorksLeft: 0 }).where(eq(s.applications.id, applicationId)).returning();
+  if (!app) throw new Error("Application not found");
+  await log({ artistId: app.artistId, showId: app.showId, kind: "status", body: "Stopped the invitation to add more works", actor });
+  revalidatePath("/admin", "layout");
+  revalidatePath("/studio");
 }
 
 export async function markArtistMessagesRead(artistId: string) {

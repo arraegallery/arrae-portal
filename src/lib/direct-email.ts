@@ -13,3 +13,6 @@ export function parseDirectEmail(body: string) {
   const m = body.match(/^Emailed “([\s\S]*?)” to (\S+)\n\n([\s\S]*)$/);
   return m ? { subject: m[1], to: m[2], message: m[3] } : { subject: "", to: "", message: body };
 }
+
+/** How many more works an artist may add when ARRAE asks for more from the email box. */
+export const MORE_WORKS = 3;

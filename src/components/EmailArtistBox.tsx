@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { emailArtist } from "@/app/admin/actions";
-import { parseDirectEmail } from "@/lib/direct-email";
+import { emailArtist, stopMoreWorks } from "@/app/admin/actions";
+import { MORE_WORKS, parseDirectEmail } from "@/lib/direct-email";
+import type { ApplicationStatus } from "@/lib/status";
 import type { BoardNote } from "@/lib/queries";
+
+type App = { id: string; status: ApplicationStatus; extraWorksLeft: number };
 
 /**
  * Write to one artist from the review page. It goes out from the portal in ARRAE's email
@@ -15,6 +18,8 @@ export function EmailArtistBox({
   showName,
   sent,
   onSent,
+  application,
+  onApplication,
   className = "",
 }: {
   artist: { id: string; name: string; email: string };
@@ -22,6 +27,9 @@ export function EmailArtistBox({
   showName: string;
   sent: BoardNote[];
   onSent: (entry: BoardNote) => void;
+  /** This artist's application to the show, when they have one. */
+  application?: App | null;
+  onApplication?: (app: App) => void;
   className?: string;
 }) {
   const first = artist.name.trim().split(/\s+/)[0] || artist.name;
@@ -30,6 +38,9 @@ export function EmailArtistBox({
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [justSent, setJustSent] = useState(false);
+  const [moreWorks, setMoreWorks] = useState(false);
+  const accepted = application?.status === "Selected";
+  const left = application?.extraWorksLeft ?? 0;
   const [pending, startTransition] = useTransition();
   const hasEmail = artist.email.includes("@");
   const ready = hasEmail && subject.trim() && message.trim() && message.trim() !== `Hi ${first},`;
@@ -38,15 +49,30 @@ export function EmailArtistBox({
     setError(null);
     startTransition(async () => {
       try {
-        const entry = await emailArtist(artist.id, subject, message, showId);
-        onSent(entry);
+        const r = await emailArtist(artist.id, subject, message, showId, moreWorks);
+        onSent(r.entry);
+        if (r.application) onApplication?.(r.application);
         setMessage(`Hi ${first},\n\n`);
+        setMoreWorks(false);
         setConfirming(false);
         setJustSent(true);
         setTimeout(() => setJustSent(false), 6000);
       } catch (e) {
         setError((e as Error).message || "The email didn't go out. Try again.");
         setConfirming(false);
+      }
+    });
+  }
+
+  function stop() {
+    if (!application) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        await stopMoreWorks(application.id);
+        onApplication?.({ ...application, extraWorksLeft: 0 });
+      } catch (e) {
+        setError((e as Error).message);
       }
     });
   }
@@ -82,9 +108,29 @@ export function EmailArtistBox({
             aria-label="Message"
             className="mt-2 h-36 w-full rounded-md bg-white p-2 text-sm ring-1 ring-line"
           />
+          {!accepted && (
+            <label className="mt-1 flex cursor-pointer items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={moreWorks}
+                onChange={(e) => {
+                  setMoreWorks(e.target.checked);
+                  setConfirming(false);
+                }}
+                className="mt-0.5"
+              />
+              <span>
+                Let them sign in and add up to {MORE_WORKS} more works for {showName}
+                <span className="block text-xs text-muted">Adds an “Add your works” button to the email and moves them to Asked for other works.</span>
+              </span>
+            </label>
+          )}
           {confirming ? (
             <div className="mt-1 rounded-md bg-white p-2 text-sm ring-1 ring-ink/30">
-              <p>Send this email to {artist.name} now?</p>
+              <p>
+                Send this email to {artist.name} now?
+                {moreWorks ? ` They'll be able to add up to ${MORE_WORKS} more works.` : ""}
+              </p>
               <div className="mt-2 flex gap-2">
                 <button onClick={send} disabled={pending} className="rounded-md bg-ink px-3 py-1 text-white disabled:opacity-40">
                   {pending ? "Sending…" : "Yes, send it"}
@@ -103,6 +149,14 @@ export function EmailArtistBox({
             </div>
           )}
           {error && <p className="mt-2 text-sm text-rose-700">{error}</p>}
+          {left > 0 && (
+            <p className="mt-2 rounded-md bg-teal-50 p-2 text-sm text-teal-900 ring-1 ring-teal-200">
+              They can still add {left} more work{left === 1 ? "" : "s"} for {showName}.{" "}
+              <button onClick={stop} disabled={pending} className="underline">
+                Stop this
+              </button>
+            </p>
+          )}
         </>
       )}
       {sent.length > 0 && (

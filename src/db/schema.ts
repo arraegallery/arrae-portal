@@ -85,6 +85,8 @@ export const applications = pgTable("applications", {
   submittedOn: date("submitted_on"),
   decidedAt: timestamp("decided_at", { withTimezone: true }),
   artistNotifiedAt: timestamp("artist_notified_at", { withTimezone: true }),
+  /** How many more works ARRAE has invited the artist to add to this application (even after the show closes). */
+  extraWorksLeft: integer("extra_works_left").default(0).notNull(),
   flag: text("flag"),
   airtableStatus: text("airtable_status"),
   airtableRecordId: text("airtable_record_id"),
