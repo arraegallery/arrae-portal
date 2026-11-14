@@ -10,6 +10,7 @@ import { addNote, addToSandbox, addWorksToShow, moveWorksToShow, reassignWorks, 
 const PHOTO_NOTE = "Thank you for applying! Could you send us better photos of these works? Straight on, in good natural light, filling the frame, with no glare or background. A detail shot is welcome too.";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { BoardEntry, BoardWork } from "@/lib/queries";
+import { EVERYTHING, FINAL_CURATION, FilterPanel, isPreset, passes, useSavedFilters } from "./ReviewFilters";
 import {
   APPLICATION_STATUSES,
   STATUS_TONE,
@@ -20,7 +21,6 @@ import {
 } from "@/lib/status";
 
 type View = "artists" | "works";
-type Group = "all" | "New applicant" | "Roster artist";
 const WORK_DECISIONS: WorkStatus[] = ["Shortlist", "Selected", "Waitlist", "Not included"];
 const OPEN: (ApplicationStatus | WorkStatus)[] = ["New", "Submitted", "In review", "Shortlist"];
 
@@ -68,9 +68,8 @@ export function ReviewBoard({
     startTransition(() => (has ? removeFromSandbox(show.id, workId) : addToSandbox(show.id, workId)));
   }
   const [view, setView] = useState<View>("artists");
-  const [group, setGroup] = useState<Group>("all");
-  const [status, setStatus] = useState<string>("all");
-  const [category, setCategory] = useState("all");
+  const [filters, setFilters] = useSavedFilters(show.id);
+  const [showFilters, setShowFilters] = useState(false);
   const [maxPrice, setMaxPrice] = useState("");
   const [query, setQuery] = useState("");
   const [openArtist, setOpenArtist] = useState<string | null>(() => (focusArtist && !focusWork && initial.some((e) => e.artist.id === focusArtist) ? focusArtist : null));
@@ -81,20 +80,16 @@ export function ReviewBoard({
   const [, startTransition] = useTransition();
 
   const categories = useMemo(
-    () => [...new Set(entries.flatMap((e) => e.works.map((w) => w.category).filter(Boolean)))].sort() as string[],
+    () => [...new Set(entries.flatMap((e) => e.works.map((w) => w.category ?? "Other")))].sort(),
     [entries],
   );
 
-  const workPasses = (w: BoardWork) =>
-    (status === "all" || (status === "open" ? OPEN.includes(w.status) : w.status === status)) &&
-    (category === "all" || w.category === category) &&
-    (!maxPrice || (w.price ?? 0) <= Number(maxPrice));
-
   const visible = entries
-    .filter((e) => group === "all" || e.group === group)
     .filter((e) => !query || e.artist.name.toLowerCase().includes(query.toLowerCase()) || e.works.some((w) => w.title.toLowerCase().includes(query.toLowerCase())))
-    .map((e) => ({ ...e, shown: e.works.filter(workPasses) }))
-    .filter((e) => e.shown.length > 0 || (status !== "all" && e.application?.status === status));
+    .map((e) => ({ ...e, shown: e.works.filter((w) => passes(filters, e, w) && (!maxPrice || (w.price ?? 0) <= Number(maxPrice))) }))
+    .filter((e) => e.shown.length > 0);
+  const everything = isPreset(filters, EVERYTHING);
+  const curation = isPreset(filters, FINAL_CURATION);
 
   const allWorks = entries.flatMap((e) => e.works);
   const decided = allWorks.filter((w) => !OPEN.includes(w.status)).length;
@@ -201,24 +196,27 @@ export function ReviewBoard({
             </button>
           ))}
         </div>
-        <select value={group} onChange={(e) => setGroup(e.target.value as Group)} className="rounded-md bg-white px-2 py-1.5 ring-1 ring-line">
-          <option value="all">Everyone</option>
-          <option value="New applicant">New applicants</option>
-          <option value="Roster artist">Roster artists</option>
-        </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-md bg-white px-2 py-1.5 ring-1 ring-line">
-          <option value="all">Any status</option>
-          <option value="open">Still to decide</option>
-          {["Shortlist", "Selected", "Waitlist", "Not included"].map((s) => (
-            <option key={s}>{s}</option>
-          ))}
-        </select>
-        <select value={category} onChange={(e) => setCategory(e.target.value)} className="rounded-md bg-white px-2 py-1.5 ring-1 ring-line">
-          <option value="all">All media</option>
-          {categories.map((c) => (
-            <option key={c}>{c}</option>
-          ))}
-        </select>
+        <button
+          onClick={() => setShowFilters((v) => !v)}
+          className={`rounded-md px-3 py-1.5 ring-1 ${showFilters ? "bg-ink text-white ring-ink" : "bg-white ring-line"}`}
+        >
+          Filters{!everything && " •"} {showFilters ? "▴" : "▾"}
+        </button>
+        <button
+          onClick={() => {
+            setFilters(FINAL_CURATION);
+            setView("works");
+          }}
+          title="New works by roster artists, plus new applicants marked Selected (Accept). Works marked No are hidden."
+          className={`rounded-md px-3 py-1.5 ring-1 ${curation ? "bg-ink text-white ring-ink" : "bg-white ring-line hover:bg-paper"}`}
+        >
+          Final curation
+        </button>
+        {!everything && (
+          <button onClick={() => setFilters(EVERYTHING)} className="rounded-md px-2 py-1.5 text-muted underline">
+            Show everything
+          </button>
+        )}
         <input
           inputMode="numeric"
           placeholder="Max price"
@@ -233,6 +231,7 @@ export function ReviewBoard({
           className="min-w-48 flex-1 rounded-md bg-white px-2 py-1.5 ring-1 ring-line"
         />
         <span className="text-muted">{flatVisible.length} works</span>
+        {showFilters && <FilterPanel filters={filters} setFilters={setFilters} entries={entries} categories={categories} />}
       </section>
 
       {view === "artists" ? (

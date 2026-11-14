@@ -23,6 +23,8 @@ export type BoardWork = {
   note: string | null;
   submittedOn: string | null;
   inShopify: boolean;
+  /** Listed on Shopify, or selected for another show before. False = a new work ARRAE hasn't shown. */
+  shownBefore: boolean;
   sold: boolean;
   /** The artist (or ARRAE) archived it. Still shown to ARRAE, with a tag. */
   archived: boolean;
@@ -102,6 +104,16 @@ export async function getBoard(showId: string) {
       .where(and(inArray(s.works.artistId, artistIds), eq(s.showWorks.status, "Selected"), ne(s.showWorks.showId, showId))),
   ]);
   const rosterSet = new Set([...pastApps, ...pastWorks].map((x) => x.artistId));
+  // Works from this board that were selected for another show: not new to ARRAE.
+  const boardWorkIds = rows.map((r) => r.work.id);
+  const shownElsewhere = new Set(
+    (
+      await db
+        .select({ id: s.showWorks.workId })
+        .from(s.showWorks)
+        .where(and(inArray(s.showWorks.workId, boardWorkIds.length ? boardWorkIds : ["-"]), eq(s.showWorks.status, "Selected"), ne(s.showWorks.showId, showId)))
+    ).map((x) => x.id),
+  );
   // Newest application per artist for this show
   const appByArtist = new Map<string, (typeof apps)[number]>();
   for (const a of apps.sort((x, y) => String(x.submittedOn).localeCompare(String(y.submittedOn)))) appByArtist.set(a.artistId, a);
@@ -143,6 +155,7 @@ export async function getBoard(showId: string) {
           note: sw.note,
           submittedOn: w.submittedOn,
           inShopify: !!w.shopifyHandle,
+          shownBefore: !!w.shopifyHandle || shownElsewhere.has(w.id),
           sold: !!w.soldAt,
           archived: !!w.archivedAt,
           images: imagesByWork.get(w.id) ?? [],
