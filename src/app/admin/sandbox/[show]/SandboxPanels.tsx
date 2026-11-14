@@ -193,6 +193,7 @@ export function WorkDetailsPanel({
   selected,
   onToggleSelect,
   onAdd,
+  onRemove,
   mover,
   onClose,
 }: {
@@ -201,6 +202,7 @@ export function WorkDetailsPanel({
   selected: boolean;
   onToggleSelect: () => void;
   onAdd: () => void;
+  onRemove: () => void;
   /** Present in the to-scale view: lets you send the work to another wall. */
   mover?: WallMover | null;
   onClose: () => void;
@@ -342,6 +344,18 @@ export function WorkDetailsPanel({
             {inSandbox ? (
               <button onClick={onToggleSelect} className="rounded-md px-3 py-1.5 ring-1 ring-line hover:bg-paper">
                 {selected ? "Unselect" : "Select"}
+              </button>
+            ) : null}
+            {inSandbox ? (
+              <button
+                onClick={() => {
+                  onRemove();
+                  onClose();
+                }}
+                className="rounded-md px-3 py-1.5 text-red-700 ring-1 ring-red-200 hover:bg-red-50"
+                title="Takes it off the walls and puts it back in the list on the right. Nothing else changes."
+              >
+                Take out of sandbox
               </button>
             ) : (
               <button

@@ -360,7 +360,7 @@ export function SandboxBoard({
                     <button
                       onClick={() => remove(w.id)}
                       title="Take out of sandbox"
-                      className="absolute right-2 top-2 h-6 w-6 rounded-full bg-white/90 text-sm text-muted ring-1 ring-line opacity-0 group-hover:opacity-100"
+                      className="absolute right-2 top-2 h-6 w-6 rounded-full bg-white/90 text-sm text-muted ring-1 ring-line opacity-60 group-hover:opacity-100"
                     >
                       ×
                     </button>
@@ -512,6 +512,7 @@ export function SandboxBoard({
           selected={selected.has(openWork)}
           onToggleSelect={() => toggleSelect(openWork)}
           onAdd={() => add(openWork)}
+          onRemove={() => remove(openWork)}
           mover={view === "scale" && inSandbox.has(openWork) ? mover.current : null}
           onClose={() => setOpenWork(null)}
         />
