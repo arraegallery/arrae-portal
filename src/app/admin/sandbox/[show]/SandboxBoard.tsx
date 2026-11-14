@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { addToSandbox, createShow, promoteFromSandbox, removeFromSandbox, reorderSandbox, setSandboxNote } from "../../actions";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { SandboxWork } from "@/lib/queries";
 import { STATUS_TONE } from "@/lib/status";
 import { ShowTabs } from "@/components/ShowTabs";
 import type { WallLayout, WallSetup } from "@/lib/walls";
-import { ScaleWall } from "./ScaleWall";
+import { ScaleWall, type WallMover } from "./ScaleWall";
 import { FinalizePanel, WorkDetailsPanel, needsAcceptance } from "./SandboxPanels";
 
 type Show = { id: string; name: string; type: string };
@@ -50,6 +50,7 @@ export function SandboxBoard({
   const [dropHint, setDropHint] = useState(false);
   const [openNote, setOpenNote] = useState<string | null>(null);
   const [openWork, setOpenWork] = useState<string | null>(null);
+  const mover = useRef<WallMover | null>(null);
   const [finalizing, setFinalizing] = useState(false);
   // "cards" or the to-scale wall; remembered on this computer.
   const [view, setView] = useState<"cards" | "scale">("cards");
@@ -312,6 +313,7 @@ export function SandboxBoard({
               showId={show.id}
               selected={selected}
               onOpen={setOpenWork}
+              mover={mover}
             />
           ) : (
             <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
@@ -510,6 +512,7 @@ export function SandboxBoard({
           selected={selected.has(openWork)}
           onToggleSelect={() => toggleSelect(openWork)}
           onAdd={() => add(openWork)}
+          mover={view === "scale" && inSandbox.has(openWork) ? mover.current : null}
           onClose={() => setOpenWork(null)}
         />
       )}

@@ -25,6 +25,15 @@ type Drag = {
  * The sandbox at true scale. Works start in a neat line in sandbox order; drag any of them
  * anywhere on any wall, floor to ceiling, to build a salon-style collage. Spots are saved per show.
  */
+export const IN_TRAY = -2;
+
+/** What the details panel needs to move a work between walls. `where` gives the wall index, FLOOR, or -2 when it's waiting in the tray. */
+export type WallMover = {
+  walls: { index: number; label: string }[];
+  where: (id: string) => number;
+  move: (id: string, wall: number) => "ok" | "overlap";
+};
+
 export function ScaleWall({
   items,
   setup,
@@ -32,6 +41,7 @@ export function ScaleWall({
   showId,
   selected,
   onOpen,
+  mover,
 }: {
   items: SandboxWork[];
   setup: WallSetup;
@@ -40,6 +50,8 @@ export function ScaleWall({
   selected: Set<string>;
   /** Click a work: open its details. */
   onOpen: (id: string) => void;
+  /** Filled in with a way to send a work to another wall without dragging (used by the details panel). */
+  mover?: React.MutableRefObject<WallMover | null>;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [px, setPx] = useState(800);
@@ -125,6 +137,42 @@ export function ScaleWall({
     setLayout(next);
     startSave(() => saveSandboxLayout(showId, next));
   }
+
+  /** Sends a work to another wall (or the floor), into the free spot nearest the hanging height. */
+  function moveTo(id: string, wi: number): "ok" | "overlap" {
+    const w = items.find((x) => x.id === id);
+    if (!w) return "ok";
+    if (wi === FLOOR) {
+      place(id, { wall: FLOOR, x: 0, y: 0 });
+      return "ok";
+    }
+    const wall = setup.walls[wi];
+    if (!wall) return "ok";
+    const others = (onWall[wi] ?? []).filter((p) => p.item.id !== id);
+    const fit = fitIntoGaps([w], { ...setup, walls: [wall] }, [others]).placed[0];
+    if (fit) {
+      place(id, { wall: wi, x: fit.x, y: fit.y });
+      return "ok";
+    }
+    // No free space: put it in the middle at the hanging height so it can be nudged into place.
+    const { width, height } = sized(w);
+    const x = Math.max(0, (wall.width - width) / 2);
+    const y = Math.min(Math.max(0, setup.center - height / 2), Math.max(0, wall.height - height));
+    place(id, { wall: wi, x, y });
+    return "overlap";
+  }
+  useEffect(() => {
+    if (!mover) return;
+    mover.current = {
+      walls: setup.walls.map((w, i) => ({ index: i, label: `${w.name} · ${feetInches(w.width)} wide` })),
+      where: (id) => {
+        if (floorIds.has(id)) return FLOOR;
+        const wi = onWall.findIndex((spots) => spots.some((p) => p.item.id === id));
+        return wi < 0 ? IN_TRAY : wi;
+      },
+      move: moveTo,
+    };
+  });
 
   function drop(e: React.PointerEvent, d: Drag, p: Spot) {
     const left = e.clientX - d.grabX;

@@ -9,6 +9,8 @@ import { CATEGORIES } from "@/lib/application-fields";
 import { finalizeConflicts } from "@/lib/finalize";
 import type { SandboxWork } from "@/lib/queries";
 import { STATUS_TONE } from "@/lib/status";
+import { FLOOR } from "@/lib/walls";
+import { IN_TRAY, type WallMover } from "./ScaleWall";
 
 function Modal({ onClose, children, wide }: { onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   useEffect(() => {
@@ -191,6 +193,7 @@ export function WorkDetailsPanel({
   selected,
   onToggleSelect,
   onAdd,
+  mover,
   onClose,
 }: {
   work: SandboxWork;
@@ -198,6 +201,8 @@ export function WorkDetailsPanel({
   selected: boolean;
   onToggleSelect: () => void;
   onAdd: () => void;
+  /** Present in the to-scale view: lets you send the work to another wall. */
+  mover?: WallMover | null;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -331,6 +336,8 @@ export function WorkDetailsPanel({
             </div>
           </form>
 
+          {mover && <MoveToWall key={work.id} id={work.id} mover={mover} />}
+
           <div className="mt-3 flex flex-wrap gap-2">
             {inSandbox ? (
               <button onClick={onToggleSelect} className="rounded-md px-3 py-1.5 ring-1 ring-line hover:bg-paper">
@@ -351,5 +358,40 @@ export function WorkDetailsPanel({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** "Move to" dropdown: sends the work to another wall (into the free spot nearest the hanging height) or the floor. */
+function MoveToWall({ id, mover }: { id: string; mover: WallMover }) {
+  const [at, setAt] = useState(() => mover.where(id));
+  const [note, setNote] = useState<string | null>(null);
+  return (
+    <label className="mt-3 block text-sm">
+      <span className="text-muted">Move to</span>
+      <select
+        value={String(at)}
+        onChange={(e) => {
+          const wi = Number(e.target.value);
+          const res = mover.move(id, wi);
+          setAt(wi);
+          const name = wi === FLOOR ? "the floor" : (mover.walls.find((w) => w.index === wi)?.label.split(" · ")[0] ?? "that wall");
+          setNote(res === "overlap" ? `Moved to ${name}. There's no free space, so it overlaps other works: drag it into place.` : `Moved to ${name}.`);
+        }}
+        className="mt-1 block w-full rounded-md border border-line bg-paper px-2 py-1.5"
+      >
+        {at === IN_TRAY && (
+          <option value={String(IN_TRAY)} disabled>
+            Not on a wall yet
+          </option>
+        )}
+        {mover.walls.map((w) => (
+          <option key={w.index} value={String(w.index)}>
+            {w.label}
+          </option>
+        ))}
+        <option value={String(FLOOR)}>Floor / pedestal (sculpture box)</option>
+      </select>
+      {note && <span className="mt-1 block text-emerald-700">{note}</span>}
+    </label>
   );
 }
