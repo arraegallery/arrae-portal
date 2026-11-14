@@ -557,3 +557,17 @@ export async function getSandboxLayout(showId: string) {
   const [row] = await db.select().from(s.appSettings).where(eq(s.appSettings.key, layoutKey(showId)));
   return parseLayout(row?.value);
 }
+
+/** Each artist's applications to other shows, so a "new" applicant who tried before is easy to spot. */
+export async function getOtherApplications(artistIds: string[], showId: string) {
+  if (!artistIds.length) return {} as Record<string, { show: string; status: ApplicationStatus; submittedOn: string | null }[]>;
+  const rows = await db
+    .select({ artistId: s.applications.artistId, show: s.shows.name, status: s.applications.status, submittedOn: s.applications.submittedOn })
+    .from(s.applications)
+    .innerJoin(s.shows, eq(s.shows.id, s.applications.showId))
+    .where(and(inArray(s.applications.artistId, artistIds), ne(s.applications.showId, showId)))
+    .orderBy(asc(s.applications.submittedOn));
+  const out: Record<string, { show: string; status: ApplicationStatus; submittedOn: string | null }[]> = {};
+  for (const r of rows) (out[r.artistId] ??= []).push({ show: r.show, status: r.status, submittedOn: r.submittedOn });
+  return out;
+}
