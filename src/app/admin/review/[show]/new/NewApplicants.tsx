@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ShowTabs } from "@/components/ShowTabs";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
+import { EmailArtistBox } from "@/components/EmailArtistBox";
+import { DIRECT_EMAIL_KIND } from "@/lib/direct-email";
 import { addNote, setApplicationStatus, setWorkStatus } from "../../../actions";
 import type { BoardEntry, BoardWork } from "@/lib/queries";
 import { STATUS_TONE, artistFacingApplication, artistFacingWork, type ApplicationStatus, type WorkStatus } from "@/lib/status";
@@ -131,6 +133,10 @@ export function NewApplicants({
     startTransition(() => addNote(entry.artist.id, text, show.id));
   }
 
+  function addSent(entry: BoardEntry, sent: BoardEntry["notes"][number]) {
+    setEntries((es) => es.map((e) => (e.artist.id === entry.artist.id ? { ...e, notes: [sent, ...e.notes] } : e)));
+  }
+
   // Escape closes the large view; arrows step through this artist's works.
   useEffect(() => {
     function onKey(ev: KeyboardEvent) {
@@ -246,6 +252,8 @@ export function NewApplicants({
               onOpenWork={setViewing}
               onPickWork={(id, s) => pickWork(current, id, s)}
               onNote={(b) => saveNote(current, b)}
+              showId={show.id}
+              onEmailed={(sent) => addSent(current, sent)}
             />
           ) : (
             <p className="rounded-lg bg-white p-10 text-center text-muted ring-1 ring-line">Pick an applicant on the left to see their bio and works.</p>
@@ -285,6 +293,8 @@ function Applicant({
   onOpenWork,
   onPickWork,
   onNote,
+  showId,
+  onEmailed,
 }: {
   entry: BoardEntry;
   showName: string;
@@ -297,6 +307,8 @@ function Applicant({
   onOpenWork: (id: string) => void;
   onPickWork: (id: string, s: WorkStatus) => void;
   onNote: (body: string) => void;
+  showId: string;
+  onEmailed: (sent: BoardEntry["notes"][number]) => void;
 }) {
   const a = entry.artist;
   const app = entry.application!;
@@ -458,6 +470,13 @@ function Applicant({
               </ul>
             )}
           </div>
+          <EmailArtistBox
+            artist={a}
+            showId={showId}
+            showName={showName}
+            sent={entry.notes.filter((n) => n.kind === DIRECT_EMAIL_KIND)}
+            onSent={onEmailed}
+          />
         </div>
       </section>
     </article>

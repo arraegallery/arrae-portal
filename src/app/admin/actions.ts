@@ -12,6 +12,7 @@ import { parseAmount } from "@/lib/amount";
 import { ARTIST_ONBOARDING, SHOW_ONBOARDING, readOnboarding } from "@/lib/onboarding";
 import { recordWorkChanges, TRACKED_FIELDS } from "@/lib/changes";
 import { attachPhotos, createPhotoSlots, listPhotos, makeMainPhoto, removePhoto, worksByIds, type UploadedPhoto } from "@/lib/photos";
+import { DIRECT_EMAIL_KIND, directEmailBody } from "@/lib/direct-email";
 import { personalize, renderEmail, renderText, sendEmails, type EmailContent } from "@/lib/email";
 import { oneClickUrl, optedOut, unsubscribeUrl } from "@/lib/unsubscribe";
 import { WALLS_KEY, layoutKey, parseLayout, parseWallSetup, type WallLayout, type WallSetup } from "@/lib/walls";
@@ -458,6 +459,28 @@ export async function sendMessageToArtist(artistId: string, body: string) {
   revalidatePath(`/admin/artists/${artistId}`);
   revalidatePath("/admin/inbox");
   return { id: row.id, sender: "arrae" as const, body: row.body, at: row.createdAt.toISOString(), read: true };
+}
+
+/** Emails one artist straight from the review page (replies go to hello@), and keeps a copy on their history. */
+export async function emailArtist(artistId: string, subject: string, message: string, showId?: string) {
+  const actor = await requireOwner();
+  const subj = subject.trim().slice(0, 200);
+  const text = message.trim().slice(0, 10000);
+  if (!subj) throw new Error("Add a subject");
+  if (!text) throw new Error("Write a message first");
+  const [artist] = await db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email }).from(s.artists).where(eq(s.artists.id, artistId));
+  if (!artist) throw new Error("Unknown artist");
+  const to = artist.email.trim();
+  if (!to.includes("@")) throw new Error("This artist has no email address on file");
+  const content = { subject: personalize(subj, artist.name), body: personalize(text, artist.name) };
+  const { sent, failures } = await sendEmails([{ to, subject: content.subject, html: renderEmail(content), text: renderText(content) }]);
+  if (!sent) throw new Error(`The email didn't go out: ${failures[0]?.error ?? "unknown error"}`);
+  const [row] = await db
+    .insert(s.activity)
+    .values({ artistId, showId: showId ?? null, kind: DIRECT_EMAIL_KIND, body: directEmailBody(content.subject, content.body, to), actor })
+    .returning();
+  revalidatePath(`/admin/artists/${artistId}`);
+  return { id: row.id, body: row.body, actor, kind: row.kind, workId: null, createdAt: row.createdAt.toISOString() };
 }
 
 export async function markArtistMessagesRead(artistId: string) {

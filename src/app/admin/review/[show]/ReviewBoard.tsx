@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { ShowTabs } from "@/components/ShowTabs";
 import { ShowPicker } from "@/components/ShowPicker";
+import { EmailArtistBox } from "@/components/EmailArtistBox";
+import { DIRECT_EMAIL_KIND } from "@/lib/direct-email";
 import { addNote, addToSandbox, addWorksToShow, moveWorksToShow, reassignWorks, removeFromSandbox, removeWorksFromShow, requestBetterPhotos, setApplicationStatus, setWorkStatus } from "../../actions";
 
 const PHOTO_NOTE = "Thank you for applying! Could you send us better photos of these works? Straight on, in good natural light, filling the frame, with no glare or background. A detail shot is welcome too.";
@@ -366,7 +368,7 @@ export function ReviewBoard({
         </div>
       )}
 
-      {artist && <ArtistDrawer entry={artist} showId={show.id} showName={show.name} onClose={() => setOpenArtist(null)} onDecide={updateApplication} onAddNote={(body) => saveNote(artist.artist.id, body)} shows={shows} artists={artists} onOpenWork={(id) => setOpenWork({ artistId: artist.artist.id, workId: id })} />}
+      {artist && <ArtistDrawer entry={artist} showId={show.id} showName={show.name} onClose={() => setOpenArtist(null)} onDecide={updateApplication} onAddNote={(body) => saveNote(artist.artist.id, body)} onEmailed={(sent) => setEntries((es) => es.map((e) => (e.artist.id === artist.artist.id ? { ...e, notes: [sent, ...e.notes] } : e)))} shows={shows} artists={artists} onOpenWork={(id) => setOpenWork({ artistId: artist.artist.id, workId: id })} />}
     </main>
   );
 }
@@ -442,6 +444,7 @@ function ArtistDrawer({
   onClose,
   onDecide,
   onAddNote,
+  onEmailed,
   shows,
   artists,
   onOpenWork,
@@ -452,6 +455,7 @@ function ArtistDrawer({
   onClose: () => void;
   onDecide: (artistId: string, applicationId: string, s: ApplicationStatus) => void;
   onAddNote: (body: string) => void;
+  onEmailed: (sent: BoardEntry["notes"][number]) => void;
   shows: { id: string; name: string }[];
   artists: { id: string; name: string; email: string }[];
   onOpenWork: (workId: string) => void;
@@ -510,6 +514,15 @@ function ArtistDrawer({
           onAdd={onAddNote}
         />
 
+        <EmailArtistBox
+          className="mt-4 bg-white p-4"
+          artist={a}
+          showId={showId}
+          showName={showName}
+          sent={entry.notes.filter((n) => n.kind === DIRECT_EMAIL_KIND)}
+          onSent={onEmailed}
+        />
+
         <div className="mt-5 grid grid-cols-3 gap-2">
           {entry.works.map((w) => (
             <button key={w.id} onClick={() => onOpenWork(w.id)} className="overflow-hidden rounded ring-1 ring-line">
@@ -534,12 +547,12 @@ function ArtistDrawer({
 
         <FixSubmission entry={entry} showId={showId} showName={showName} shows={shows} artists={artists} onDone={onClose} />
 
-        {entry.notes.some((n) => n.kind !== "note") && (
+        {entry.notes.some((n) => n.kind !== "note" && n.kind !== DIRECT_EMAIL_KIND) && (
           <details className="mt-6">
             <summary className="cursor-pointer text-xs uppercase tracking-wider text-muted">Decision history</summary>
             <ul className="mt-2 space-y-1 text-sm text-muted">
               {entry.notes
-                .filter((n) => n.kind !== "note")
+                .filter((n) => n.kind !== "note" && n.kind !== DIRECT_EMAIL_KIND)
                 .map((n) => (
                   <li key={n.id}>
                     <span className="text-xs">{new Date(n.createdAt).toLocaleDateString()} · </span>
