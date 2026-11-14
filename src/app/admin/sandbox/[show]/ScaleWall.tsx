@@ -31,14 +31,15 @@ export function ScaleWall({
   layout: initialLayout,
   showId,
   selected,
-  onToggle,
+  onOpen,
 }: {
   items: SandboxWork[];
   setup: WallSetup;
   layout: WallLayout;
   showId: string;
   selected: Set<string>;
-  onToggle: (id: string) => void;
+  /** Click a work: open its details. */
+  onOpen: (id: string) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [px, setPx] = useState(800);
@@ -182,7 +183,7 @@ export function ScaleWall({
           if (!d) return;
           setDrag(null);
           if (d.moved) drop(e, d, p);
-          else onToggle(w.id);
+          else onOpen(w.id);
         }}
         onPointerCancel={() => setDrag(null)}
         title={

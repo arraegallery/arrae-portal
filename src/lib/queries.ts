@@ -238,13 +238,17 @@ export type SandboxWork = {
   /** Other shows the work has been part of, for context */
   pastShows: string[];
   onWaitlist: boolean;
+  /** Roster = selected for another show before; new = first time with ARRAE. */
+  artistKind: "roster" | "new";
+  /** The artist's application to this show, if any. */
+  application: { id: string; status: ApplicationStatus } | null;
 };
 
 /** Everything the sandbox page needs: the sandbox itself, plus every work to pick from. */
 export async function getSandbox(showId: string) {
   const [show] = await db.select().from(s.shows).where(eq(s.shows.id, showId));
   if (!show) return null;
-  const [works, artists, images, showWorks, shows, waiting, items] = await Promise.all([
+  const [works, artists, images, showWorks, shows, waiting, items, apps] = await Promise.all([
     db
       .select({
         id: s.works.id,
@@ -270,7 +274,17 @@ export async function getSandbox(showId: string) {
     db.select({ id: s.shows.id, name: s.shows.name }).from(s.shows),
     db.select({ id: s.waitlist.artistId }).from(s.waitlist),
     db.select().from(s.sandboxItems).where(eq(s.sandboxItems.showId, showId)).orderBy(asc(s.sandboxItems.position), asc(s.sandboxItems.addedAt)),
+    db.select({ id: s.applications.id, artistId: s.applications.artistId, showId: s.applications.showId, status: s.applications.status }).from(s.applications),
   ]);
+  // Same rule as the review board: roster = an accepted application or a selected work in another show.
+  const artistOfWork = new Map(works.map((w) => [w.id, w.artistId]));
+  const roster = new Set<string>();
+  for (const a of apps) if (a.status === "Selected" && a.showId !== showId) roster.add(a.artistId);
+  for (const x of showWorks) {
+    const aid = artistOfWork.get(x.workId);
+    if (aid && x.status === "Selected" && x.showId !== showId) roster.add(aid);
+  }
+  const appHere = new Map(apps.filter((a) => a.showId === showId).map((a) => [a.artistId, { id: a.id, status: a.status }]));
   const artistName = new Map(artists.map((a) => [a.id, a.name]));
   const showName = new Map(shows.map((x) => [x.id, x.name]));
   const waitingSet = new Set(waiting.map((w) => w.id));
@@ -304,6 +318,8 @@ export async function getSandbox(showId: string) {
         showStatus: mine.find((x) => x.showId === showId)?.status ?? null,
         pastShows: mine.filter((x) => x.showId !== showId).map((x) => showName.get(x.showId) ?? x.showId),
         onWaitlist: !!w.artistId && waitingSet.has(w.artistId),
+        artistKind: (w.artistId && roster.has(w.artistId) ? "roster" : "new") as SandboxWork["artistKind"],
+        application: (w.artistId && appHere.get(w.artistId)) || null,
       };
     })
     .sort((a, b) => a.artistName.localeCompare(b.artistName) || a.title.localeCompare(b.title));
