@@ -72,7 +72,7 @@ export function ScaleWall({
   // Only spots on walls that still exist (or the floor) count; walls can be edited or removed.
   const spotOf = (id: string) => {
     const s = layout[id];
-    return s && (s.wall === FLOOR || s.wall < setup.walls.length) ? s : null;
+    return s && (s.wall === FLOOR || (s.wall < setup.walls.length && !setup.walls[s.wall].hidden)) ? s : null;
   };
   // Sculpture and ceramics start on the floor; drag anything in or out of the floor box.
   const onFloor = items.filter((w) => {
@@ -120,7 +120,17 @@ export function ScaleWall({
   const tray: Spot[] = (auto ? auto.leftover : (gaps?.leftover ?? [])).map((w) => ({ item: w, x: 0, y: 0, ...sized(w), placed: false }));
   const floor: Spot[] = onFloor.map((w) => ({ item: w, x: 0, y: 0, ...sized(w), placed: layout[w.id]?.wall === FLOOR }));
 
-  const widest = Math.max(...walls.map((h) => h.wall.width));
+  const hiddenCount = setup.walls.filter((w) => w.hidden).length;
+  const shown = setup.walls.length - hiddenCount;
+  // Visible walls in order; a wall marked as the back of the one before it is grouped with it.
+  const groups: number[][] = [];
+  setup.walls.forEach((w, i) => {
+    if (w.hidden) return;
+    const last = groups[groups.length - 1];
+    if (w.backOf && last && last[last.length - 1] === i - 1) last.push(i);
+    else groups.push([i]);
+  });
+  const widest = Math.max(...groups.map((g) => g.reduce((sum, i) => sum + setup.walls[i].width + GUTTER, 0) - GUTTER));
   const scale = Math.max(0.5, px / (widest + GUTTER)); // pixels per inch
   const noSize = items.filter((w) => !w.width || !w.height).length;
   const placedCount = items.filter((w) => layout[w.id]).length;
@@ -164,7 +174,7 @@ export function ScaleWall({
   useEffect(() => {
     if (!mover) return;
     mover.current = {
-      walls: setup.walls.map((w, i) => ({ index: i, label: `${w.name} · ${feetInches(w.width)} wide` })),
+      walls: setup.walls.flatMap((w, i) => (w.hidden ? [] : [{ index: i, label: `${w.name} · ${feetInches(w.width)} wide` }])),
       where: (id) => {
         if (floorIds.has(id)) return FLOOR;
         const wi = onWall.findIndex((spots) => spots.some((p) => p.item.id === id));
@@ -262,11 +272,54 @@ export function ScaleWall({
     );
   }
 
+  function renderWall(i: number) {
+    const h = walls[i];
+    const W = h.wall.width * scale;
+    const H = h.wall.height * scale;
+    const g = GUTTER * scale;
+    const spots = onWall[i];
+    return (
+      <figure key={i} style={{ width: GUTTER * scale + h.wall.width * scale }}>
+        <figcaption className="mb-1 flex min-h-10 flex-wrap items-baseline gap-x-2 text-sm leading-tight">
+          <span className={`font-medium ${h.overflow ? "text-red-700" : ""}`}>{h.wall.name}</span>
+          <span className="text-xs text-muted">
+            {feetInches(h.wall.width)} × {feetInches(h.wall.height)} · {spots.length} work{spots.length === 1 ? "" : "s"}
+          </span>
+        </figcaption>
+        <div className="relative" style={{ width: g + W, height: H + 22 }}>
+          <Person height={PERSON * scale} left={g / 2} bottom={22} />
+          <div
+            data-wall={i}
+            className={`absolute top-0 ${h.overflow ? "bg-red-50/60 outline-dashed outline-1 outline-red-300" : "bg-[#fbfaf7] shadow-[inset_0_-3px_0_#cfc7b8] ring-1 ring-[#e2dccf]"}`}
+            style={{ left: g, width: W, height: H }}
+          >
+            <div
+              className="pointer-events-none absolute inset-x-0 border-t border-dotted border-[#d6cfc2]"
+              style={{ top: (h.wall.height - setup.center) * scale }}
+            />
+            {spots.map((p) =>
+              renderWork(
+                p,
+                {
+                  left: p.x * scale,
+                  top: (h.wall.height - p.y - p.height) * scale,
+                },
+                true,
+              ),
+            )}
+          </div>
+          <Ruler left={g} width={h.wall.width} scale={scale} top={H} />
+        </div>
+      </figure>
+    );
+  }
+
   return (
     <div ref={box}>
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
         <span>
-          {setup.walls.length} wall{setup.walls.length === 1 ? "" : "s"} · centred at {feetInches(setup.center)} from the floor
+          {shown} wall{shown === 1 ? "" : "s"}
+          {hiddenCount > 0 && ` (${hiddenCount} hidden)`} · centred at {feetInches(setup.center)} from the floor
         </span>
         {noSize > 0 && <span className="text-amber-800">{noSize} without a size, shown as dashed 12″ squares</span>}
         <div className="ml-auto flex gap-2">
@@ -319,46 +372,16 @@ export function ScaleWall({
       </div>
 
       <div className="flex flex-wrap items-start gap-x-10 gap-y-8">
-        {walls.map((h, i) => {
-          const W = h.wall.width * scale;
-          const H = h.wall.height * scale;
-          const g = GUTTER * scale;
-          const spots = onWall[i];
-          return (
-            <figure key={i} style={{ width: GUTTER * scale + h.wall.width * scale }}>
-              <figcaption className="mb-1 flex min-h-10 flex-wrap items-baseline gap-x-2 text-sm leading-tight">
-                <span className={`font-medium ${h.overflow ? "text-red-700" : ""}`}>{h.wall.name}</span>
-                <span className="text-xs text-muted">
-                  {feetInches(h.wall.width)} × {feetInches(h.wall.height)} · {spots.length} work{spots.length === 1 ? "" : "s"}
-                </span>
-              </figcaption>
-              <div className="relative" style={{ width: g + W, height: H + 22 }}>
-                <Person height={PERSON * scale} left={g / 2} bottom={22} />
-                <div
-                  data-wall={i}
-                  className={`absolute top-0 ${h.overflow ? "bg-red-50/60 outline-dashed outline-1 outline-red-300" : "bg-[#fbfaf7] shadow-[inset_0_-3px_0_#cfc7b8] ring-1 ring-[#e2dccf]"}`}
-                  style={{ left: g, width: W, height: H }}
-                >
-                  <div
-                    className="pointer-events-none absolute inset-x-0 border-t border-dotted border-[#d6cfc2]"
-                    style={{ top: (h.wall.height - setup.center) * scale }}
-                  />
-                  {spots.map((p) =>
-                    renderWork(
-                      p,
-                      {
-                        left: p.x * scale,
-                        top: (h.wall.height - p.y - p.height) * scale,
-                      },
-                      true,
-                    ),
-                  )}
-                </div>
-                <Ruler left={g} width={h.wall.width} scale={scale} top={H} />
-              </div>
-            </figure>
-          );
-        })}
+        {groups.map((g) =>
+          g.length === 1 ? (
+            renderWall(g[0])
+          ) : (
+            <div key={g.join("-")} className="rounded-lg bg-[#f6f3ee] p-2 ring-1 ring-[#e2dccf]">
+              <p className="mb-1 text-xs text-muted">Two sides of the same wall</p>
+              <div className="flex flex-nowrap items-start gap-x-4">{g.map((i) => renderWall(i))}</div>
+            </div>
+          ),
+        )}
       </div>
       <p className="mt-4 text-xs text-muted">
         Works start in sandbox order: in one line if they fit, otherwise packed in rows floor to ceiling. Drag any work anywhere on any wall, and
@@ -411,18 +434,30 @@ function WallEditor({ setup, onDone }: { setup: WallSetup; onDone: () => void })
     wIn: string;
     hFt: string;
     hIn: string;
+    hidden: boolean;
+    backOf: boolean;
+    /** Index in the saved list, so works stay on their wall when walls are reordered. Null for a new wall. */
+    orig: number | null;
   };
-  const toRow = (w: Wall): Row => {
+  const toRow = (w: Wall, i: number): Row => {
     const a = splitFt(w.width);
     const b = splitFt(w.height);
-    return { name: w.name, wFt: a.ft, wIn: a.inch, hFt: b.ft, hIn: b.inch };
+    return { name: w.name, wFt: a.ft, wIn: a.inch, hFt: b.ft, hIn: b.inch, hidden: !!w.hidden, backOf: !!w.backOf, orig: i };
   };
-  const [rows, setRows] = useState<Row[]>(setup.walls.map(toRow));
+  const [rows, setRows] = useState<Row[]>(setup.walls.map((w, i) => toRow(w, i)));
   const [gap, setGap] = useState(String(setup.gap));
   const [center, setCenter] = useState(String(setup.center));
   const [saving, start] = useTransition();
   const n = (s: string) => Number(s.replace(",", ".")) || 0;
-  const set = (i: number, k: keyof Row, v: string) => setRows((r) => r.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+  const move = (i: number, by: number) =>
+    setRows((r) => {
+      const j = i + by;
+      if (j < 0 || j >= r.length) return r;
+      const next = [...r];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  const set = (i: number, k: "name" | "wFt" | "wIn" | "hFt" | "hIn", v: string) => setRows((r) => r.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
   const input = "w-14 rounded-md px-1.5 py-1 ring-1 ring-line";
 
   return (
@@ -430,34 +465,63 @@ function WallEditor({ setup, onDone }: { setup: WallSetup; onDone: () => void })
       className="mb-4 rounded-lg bg-white p-3 text-sm ring-1 ring-line"
       onSubmit={(e) => {
         e.preventDefault();
-        const walls = rows
+        const kept = rows
           .map((r, i) => ({
-            name: r.name.trim() || `Wall ${i + 1}`,
-            width: n(r.wFt) * 12 + n(r.wIn),
-            height: n(r.hFt) * 12 + n(r.hIn),
+            orig: r.orig,
+            wall: {
+              name: r.name.trim() || `Wall ${i + 1}`,
+              width: n(r.wFt) * 12 + n(r.wIn),
+              height: n(r.hFt) * 12 + n(r.hIn),
+              ...(r.hidden ? { hidden: true } : {}),
+              ...(r.backOf && i > 0 ? { backOf: true } : {}),
+            },
           }))
-          .filter((w) => w.width > 0 && w.height > 0);
-        if (!walls.length) return;
+          .filter((k) => k.wall.width > 0 && k.wall.height > 0);
+        if (!kept.length) return;
+        // Where each saved wall ended up, so arranged works move with their wall.
+        const remap: (number | null)[] = setup.walls.map(() => null);
+        kept.forEach((k, i) => k.orig != null && (remap[k.orig] = i));
         start(async () => {
-          await saveWallSetup({
-            walls,
-            gap: n(gap),
-            center: n(center),
-            measured: true,
-          });
+          await saveWallSetup(
+            {
+              walls: kept.map((k) => k.wall),
+              gap: n(gap),
+              center: n(center),
+              measured: true,
+            },
+            remap,
+          );
           onDone();
         });
       }}
     >
-      <p className="mb-2 text-muted">Measure each wall you hang on, in the order you want works to go. Feet and inches both work.</p>
+      <p className="mb-2 text-muted">
+        Measure each wall you hang on, in the order you want them shown. Feet and inches both work. Use the arrows to reorder, <b>Hide</b> to keep a
+        wall out of this plan without losing its measurements, and <b>Back side</b> on a floating wall&apos;s back to show both sides together.
+        Works you&apos;ve arranged move with their wall.
+      </p>
       <div className="space-y-2">
         {rows.map((r, i) => (
-          <div key={i} className="flex flex-wrap items-center gap-2">
+          <div key={i} className={`flex flex-wrap items-center gap-2 ${r.hidden ? "opacity-60" : ""} ${r.backOf && i > 0 ? "ml-6" : ""}`}>
+            <span className="flex flex-col leading-none">
+              <button type="button" disabled={i === 0} onClick={() => move(i, -1)} className="px-1 text-muted hover:text-ink disabled:opacity-30" aria-label="Move up">
+                ▲
+              </button>
+              <button
+                type="button"
+                disabled={i === rows.length - 1}
+                onClick={() => move(i, 1)}
+                className="px-1 text-muted hover:text-ink disabled:opacity-30"
+                aria-label="Move down"
+              >
+                ▼
+              </button>
+            </span>
             <input
               value={r.name}
               onChange={(e) => set(i, "name", e.target.value)}
               placeholder={`Wall ${i + 1}`}
-              className="w-40 rounded-md px-2 py-1 ring-1 ring-line"
+              className="w-44 rounded-md px-2 py-1 ring-1 ring-line"
               aria-label="Wall name"
             />
             <span className="text-muted">wide</span>
@@ -470,10 +534,23 @@ function WallEditor({ setup, onDone }: { setup: WallSetup; onDone: () => void })
             <span>ft</span>
             <input inputMode="decimal" value={r.hIn} onChange={(e) => set(i, "hIn", e.target.value)} className={input} aria-label="Height inches" />
             <span>in</span>
+            <label className="ml-2 flex items-center gap-1">
+              <input type="checkbox" checked={r.hidden} onChange={(e) => setRows((x) => x.map((y, j) => (j === i ? { ...y, hidden: e.target.checked } : y)))} />
+              Hide
+            </label>
+            {i > 0 && (
+              <label className="flex items-center gap-1" title="This is the back of the wall above (a floating wall): show them side by side">
+                <input type="checkbox" checked={r.backOf} onChange={(e) => setRows((x) => x.map((y, j) => (j === i ? { ...y, backOf: e.target.checked } : y)))} />
+                Back side
+              </label>
+            )}
             {rows.length > 1 && (
               <button
                 type="button"
-                onClick={() => setRows((x) => x.filter((_, j) => j !== i))}
+                onClick={() => {
+                  if (r.orig != null && !confirm(`Delete "${r.name}"? Works arranged on it go back to finding a free spot. To keep it for later, tick Hide instead.`)) return;
+                  setRows((x) => x.filter((_, j) => j !== i));
+                }}
                 className="ml-1 text-muted hover:text-ink"
                 aria-label="Remove wall"
               >
@@ -494,6 +571,9 @@ function WallEditor({ setup, onDone }: { setup: WallSetup; onDone: () => void })
               wIn: "0",
               hFt: "10",
               hIn: "0",
+              hidden: false,
+              backOf: false,
+              orig: null,
             },
           ])
         }
