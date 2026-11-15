@@ -46,7 +46,17 @@ export function needsAcceptance(w: SandboxWork) {
  * Finalize: every work in the sandbox becomes Selected for the show. First-time artists have to be
  * accepted for the show first; they're listed here with a button to accept them.
  */
-export function FinalizePanel({ show, items, onClose }: { show: { id: string; name: string }; items: SandboxWork[]; onClose: () => void }) {
+export function FinalizePanel({
+  show,
+  items,
+  missing,
+  onClose,
+}: {
+  show: { id: string; name: string };
+  items: SandboxWork[];
+  missing: MissingArtist[];
+  onClose: () => void;
+}) {
   const router = useRouter();
   const [busy, start] = useTransition();
   const [accepting, setAccepting] = useState<string | null>(null);
@@ -151,6 +161,16 @@ export function FinalizePanel({ show, items, onClose }: { show: { id: string; na
                 ))}
               </ul>
             </section>
+          )}
+
+          {missing.length > 0 && (
+            <details className="rounded-lg bg-paper p-3 ring-1 ring-line">
+              <summary className="cursor-pointer font-medium">
+                {missing.length} roster artist{missing.length === 1 ? " has" : "s have"} no work in this install
+              </summary>
+              <p className="mt-1 text-xs text-muted">Just so you know: this doesn&apos;t stop you finalizing.</p>
+              <MissingList rows={missing} show={show} />
+            </details>
           )}
 
           {conflicts.length === 0 && <p className="rounded-md bg-emerald-50 px-3 py-2 text-emerald-900 ring-1 ring-emerald-200">No conflicts: every artist can be selected.</p>}
@@ -407,5 +427,84 @@ function MoveToWall({ id, mover }: { id: string; mover: WallMover }) {
       </select>
       {note && <span className="mt-1 block text-emerald-700">{note}</span>}
     </label>
+  );
+}
+
+/** A roster artist (has a collection on the ARRAE site) with no work in the sandbox. */
+export type MissingArtist = {
+  id: string;
+  name: string;
+  /** Works they submitted to this show that aren't in the sandbox. */
+  submittedHere: number;
+  /** Their works that aren't sold or archived. */
+  available: number;
+  /** Shows they've had work in, most recent last as stored. */
+  shows: string[];
+};
+
+export function missingRoster(roster: { id: string; name: string }[], works: SandboxWork[], inSandbox: Set<string | null>): MissingArtist[] {
+  return roster
+    .filter((a) => !inSandbox.has(a.id))
+    .map((a) => {
+      const mine = works.filter((w) => w.artistId === a.id);
+      return {
+        id: a.id,
+        name: a.name,
+        submittedHere: mine.filter((w) => w.showStatus).length,
+        available: mine.filter((w) => !w.sold && !w.archived).length,
+        shows: [...new Set(mine.flatMap((w) => w.pastShows))],
+      };
+    })
+    .sort((a, b) => b.submittedHere - a.submittedHere || a.name.localeCompare(b.name));
+}
+
+function MissingList({ rows, show }: { rows: MissingArtist[]; show: { name: string } }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-2">
+      <ul className="divide-y divide-line">
+        {rows.map((r) => (
+          <li key={r.id} className="flex flex-wrap items-baseline gap-x-3 py-1.5">
+            <Link href={`/admin/artists/${r.id}`} className="font-medium underline-offset-2 hover:underline">
+              {r.name}
+            </Link>
+            {r.submittedHere > 0 && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900">
+                sent {r.submittedHere} to {show.name}, none in the sandbox
+              </span>
+            )}
+            <span className="text-xs text-muted">
+              {r.available ? `${r.available} available work${r.available === 1 ? "" : "s"}` : "no available works"}
+              {r.shows.length > 0 && ` · shown in ${r.shows.join(", ")}`}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={() => {
+          navigator.clipboard?.writeText(rows.map((r) => r.name).join("\n")).then(() => setCopied(true), () => {});
+        }}
+        className="mt-2 text-xs underline"
+      >
+        {copied ? "Copied" : "Copy the names"}
+      </button>
+    </div>
+  );
+}
+
+/** "Roster check": the same report on its own, any time while curating. */
+export function RosterReport({ show, rows, total, onClose }: { show: { id: string; name: string }; rows: MissingArtist[]; total: number; onClose: () => void }) {
+  return (
+    <Modal onClose={onClose}>
+      <h2 className="font-display text-2xl">Roster check · {show.name}</h2>
+      <p className="mt-2 text-sm text-muted">
+        {rows.length
+          ? `${rows.length} of ${total} roster artists (artists with a collection on the ARRAE site) have no work in this sandbox. Artists who sent works to ${show.name} are listed first.`
+          : `All ${total} roster artists have at least one work in this sandbox.`}{" "}
+        To add someone, search their name in “Add works” on the right.
+      </p>
+      {rows.length > 0 && <MissingList rows={rows} show={show} />}
+    </Modal>
   );
 }

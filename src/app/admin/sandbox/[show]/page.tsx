@@ -21,6 +21,7 @@ export default async function SandboxPage({ params }: { params: Promise<{ show: 
       works={data.works}
       walls={walls}
       layout={layout}
+      collectionArtists={data.collectionArtists}
     />
   );
 }

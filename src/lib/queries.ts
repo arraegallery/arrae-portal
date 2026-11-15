@@ -268,7 +268,7 @@ export async function getSandbox(showId: string) {
         duplicateOf: s.works.duplicateOf,
       })
       .from(s.works),
-    db.select({ id: s.artists.id, name: s.artists.name }).from(s.artists),
+    db.select({ id: s.artists.id, name: s.artists.name, collection: s.artists.shopifyCollectionHandle }).from(s.artists),
     db.select().from(s.workImages).where(eq(s.workImages.position, 0)),
     db.select().from(s.showWorks),
     db.select({ id: s.shows.id, name: s.shows.name }).from(s.shows),
@@ -324,7 +324,12 @@ export async function getSandbox(showId: string) {
     })
     .sort((a, b) => a.artistName.localeCompare(b.artistName) || a.title.localeCompare(b.title));
 
-  return { show, sandbox: items.map((x) => ({ workId: x.workId, note: x.note })), works: all };
+  // The roster = artists with a collection on the ARRAE site, for the "who's missing" report.
+  const collectionArtists = artists
+    .filter((a) => a.collection)
+    .map((a) => ({ id: a.id, name: a.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { show, sandbox: items.map((x) => ({ workId: x.workId, note: x.note })), works: all, collectionArtists };
 }
 
 export async function getSandboxWorkIds(showId: string) {
