@@ -86,15 +86,11 @@ export function FinalizePanel({
             Done. {done} work{done === 1 ? " is" : "s are"} now Selected for {show.name}.
           </p>
           <p className="text-muted">
-            Artists don&apos;t see anything yet. When you&apos;re ready, click <b>Release decisions</b> on the{" "}
-            <Link href="/admin/shows" className="underline">
-              Shows page
-            </Link>
-            .
+            Artists don&apos;t see anything yet. Next, send the welcome emails: they release the decisions and invite each artist to book their drop-off.
           </p>
           <div className="flex gap-2">
-            <Link href={`/admin/review/${show.id}`} className="rounded-md bg-ink px-3 py-1.5 text-white">
-              Open the review board
+            <Link href={`/admin/shows/${show.id}/notify`} className="rounded-md bg-ink px-3 py-1.5 text-white">
+              Next: notify artists
             </Link>
             <button onClick={onClose} className="rounded-md px-3 py-1.5 ring-1 ring-line">
               Close
