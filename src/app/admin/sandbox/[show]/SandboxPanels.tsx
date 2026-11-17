@@ -43,8 +43,8 @@ export function needsAcceptance(w: SandboxWork) {
 }
 
 /**
- * Finalize: every work in the sandbox becomes Selected for the show. First-time artists have to be
- * accepted for the show first; they're listed here with a button to accept them.
+ * Finalize: every work in the sandbox becomes Selected for the show, and first-time artists in it are
+ * accepted. They're listed here (each can still be accepted on its own with the button).
  */
 export function FinalizePanel({
   show,
@@ -95,17 +95,17 @@ export function FinalizePanel({
         <div className="mt-3 space-y-4 text-sm">
           <p className="text-muted">
             Every work in this sandbox ({items.length} works by {artists} artist{artists === 1 ? "" : "s"}, {formatPrice(total)} retail) becomes{" "}
-            <b>Selected</b> for {show.name}. Works already in the show that aren&apos;t in the sandbox stay as they are. Artists see nothing until
-            you release decisions.
+            <b>Selected</b> for {show.name}. The sandbox is the final word: any other work marked Selected for {show.name} becomes{" "}
+            <b>Not included</b>, and first-time artists here are accepted. Artists see nothing until you release decisions.
           </p>
 
           {conflicts.length > 0 && (
-            <section className="rounded-lg bg-red-50 p-3 ring-1 ring-red-200">
-              <h3 className="font-medium text-red-900">
-                {conflicts.length} new artist{conflicts.length === 1 ? " needs" : "s need"} to be accepted first
+            <section className="rounded-lg bg-emerald-50 p-3 ring-1 ring-emerald-200">
+              <h3 className="font-medium text-emerald-900">
+                {conflicts.length} first-time artist{conflicts.length === 1 ? "" : "s"} will be accepted for {show.name}
               </h3>
-              <p className="mt-0.5 text-xs text-red-900/80">This is their first show with ARRAE, so accept them for {show.name} before their works can be selected.</p>
-              <ul className="mt-2 divide-y divide-red-200/70">
+              <p className="mt-0.5 text-xs text-emerald-900/80">Finalizing accepts them, whatever their application said before. To leave someone out, take their works out of the sandbox.</p>
+              <ul className="mt-2 divide-y divide-emerald-200/70">
                 {conflicts.map((c) => (
                   <li key={c.artistId} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
                     <div className="min-w-0 flex-1">
@@ -173,7 +173,6 @@ export function FinalizePanel({
             </details>
           )}
 
-          {conflicts.length === 0 && <p className="rounded-md bg-emerald-50 px-3 py-2 text-emerald-900 ring-1 ring-emerald-200">No conflicts: every artist can be selected.</p>}
           {error && <p className="rounded-md bg-red-50 px-3 py-2 text-red-800 ring-1 ring-red-200">{error}</p>}
 
           <div className="flex justify-end gap-2">
@@ -181,7 +180,7 @@ export function FinalizePanel({
               Cancel
             </button>
             <button
-              disabled={busy || conflicts.length > 0 || !items.length}
+              disabled={busy || !items.length}
               onClick={() => {
                 setError("");
                 start(async () => {

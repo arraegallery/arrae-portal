@@ -254,16 +254,22 @@ async function sandboxFinalizeWorks(showId: string): Promise<FinalizeWork[]> {
 }
 
 /**
- * Finalize a show from its sandbox: every work in the sandbox becomes Selected for the show.
- * Refused while any first-time artist in it hasn't been accepted for the show. Works already in the
- * show but not in the sandbox are left as they are. Artists still see nothing until decisions are released.
+ * Finalize a show from its sandbox. The sandbox is the single source of truth:
+ * - every work in the sandbox becomes Selected for the show;
+ * - every first-time artist in it is accepted (their application, created if need be, becomes Selected);
+ * - works Selected for the show that aren't in the sandbox become "Not included";
+ * - a Selected application from an artist with nothing in the sandbox goes back to Shortlist ("Under review").
+ * Artists still see nothing until decisions are released.
  */
 export async function finalizeSandbox(showId: string) {
   const actor = await requireOwner();
-  const works = await sandboxFinalizeWorks(showId);
+  let works = await sandboxFinalizeWorks(showId);
   if (!works.length) throw new Error("The sandbox is empty");
   const conflicts = finalizeConflicts(works);
-  if (conflicts.length) throw new Error(`Accept these artists first: ${conflicts.map((c) => c.artistName).join(", ")}`);
+  if (conflicts.length) {
+    for (const c of conflicts) await ensureApplication(c.artistId, showId);
+    works = await sandboxFinalizeWorks(showId);
+  }
   const ids = works.map((w) => w.id);
   const existing = new Set(
     (await db.select({ id: s.showWorks.workId }).from(s.showWorks).where(and(eq(s.showWorks.showId, showId), inArray(s.showWorks.workId, ids)))).map((r) => r.id),
@@ -283,7 +289,27 @@ export async function finalizeSandbox(showId: string) {
     await db.update(s.applications).set({ status: "Selected", decidedAt: now }).where(inArray(s.applications.id, [...openApps.keys()]));
     for (const artistId of new Set(openApps.values())) await removeFromWaitlist(artistId);
   }
-  await log({ showId, kind: "show", body: `Finalized from the sandbox: ${ids.length} works selected`, actor });
+  // Anything marked elsewhere that isn't in the sandbox no longer counts.
+  const inList = (xs: string[]) => sql.join(xs.map((x) => sql`${x}`), sql`, `);
+  const dropped = await db
+    .update(s.showWorks)
+    .set({ status: "Not included", decidedAt: now })
+    .where(and(eq(s.showWorks.showId, showId), inArray(s.showWorks.status, ["Selected", "Requested"]), sql`${s.showWorks.workId} not in (${inList(ids)})`))
+    .returning({ workId: s.showWorks.workId });
+  const inSandbox = [...new Set(works.map((w) => w.artistId).filter((x): x is string => !!x))];
+  const reopened = inSandbox.length
+    ? await db
+        .update(s.applications)
+        .set({ status: "Shortlist" })
+        .where(and(eq(s.applications.showId, showId), eq(s.applications.status, "Selected"), sql`${s.applications.artistId} not in (${inList(inSandbox)})`))
+        .returning({ artistId: s.applications.artistId })
+    : [];
+  for (const r of reopened) await log({ artistId: r.artistId, showId, kind: "status", body: "Application back to Shortlist: nothing of theirs is in the finalized sandbox", actor });
+  const extra = [
+    conflicts.length ? `${conflicts.length} first-time artist${conflicts.length === 1 ? "" : "s"} accepted` : "",
+    dropped.length ? `${dropped.length} work${dropped.length === 1 ? "" : "s"} outside the sandbox marked Not included` : "",
+  ].filter(Boolean);
+  await log({ showId, kind: "show", body: `Finalized from the sandbox: ${ids.length} works selected${extra.length ? `; ${extra.join("; ")}` : ""}`, actor });
   revalidatePath("/admin", "layout");
   return ids.length;
 }
