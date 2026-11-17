@@ -14,6 +14,8 @@ export function MessageComposer({ artists, shows, history, me, configured }: { a
   const [audience, setAudience] = useState<Audience>("roster");
   const [showId, setShowId] = useState("");
   const [showScope, setShowScope] = useState<"selected" | "applied">("selected");
+  // Returning = selected for some other show before; first time = this is their first show with ARRAE.
+  const [pastShows, setPastShows] = useState<"all" | "returning" | "new">("all");
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
@@ -34,9 +36,13 @@ export function MessageComposer({ artists, shows, history, me, configured }: { a
         if (audience === "roster" && !a.roster) return false;
         if (audience === "waitlist" && !a.onWaitlist) return false;
         if (showId && !(showScope === "selected" ? a.selectedFor : a.appliedTo).includes(showId)) return false;
+        if (showId && pastShows !== "all") {
+          const before = a.selectedFor.some((id) => id !== showId);
+          if (pastShows === "returning" ? !before : before) return false;
+        }
         return true;
       }),
-    [artists, audience, showId, showScope],
+    [artists, audience, showId, showScope, pastShows],
   );
   const matchIds = new Set(matches.map((a) => a.id));
   const extras = [...added].filter((id) => !matchIds.has(id)).map((id) => byId.get(id)!).filter(Boolean);
@@ -145,6 +151,13 @@ export function MessageComposer({ artists, shows, history, me, configured }: { a
                 <select value={showScope} onChange={(e) => setShowScope(e.target.value as "selected" | "applied")} className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line">
                   <option value="selected">Selected for this show</option>
                   <option value="applied">Everyone who applied</option>
+                </select>
+              )}
+              {showId && (
+                <select value={pastShows} onChange={(e) => setPastShows(e.target.value as "all" | "returning" | "new")} className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line">
+                  <option value="all">Returning and first-time artists</option>
+                  <option value="returning">Returning artists (shown with ARRAE before)</option>
+                  <option value="new">First time with ARRAE</option>
                 </select>
               )}
             </div>
