@@ -9,7 +9,20 @@ import { useEffect } from "react";
  * link. Throttled so a picture that is truly missing can't cause a loop.
  */
 const EVENT = "arrae:image-broken";
-export function reportBrokenImage() {
+/**
+ * onError for work pictures: try the same picture once more after a moment (most failures are
+ * a blip), and only if that fails too, ask the page for fresh links.
+ */
+export function reportBrokenImage(e?: { currentTarget: HTMLImageElement }) {
+  const img = e?.currentTarget;
+  if (img && !img.dataset.retried) {
+    img.dataset.retried = "1";
+    const src = img.src;
+    setTimeout(() => {
+      img.src = src + (src.includes("?") ? "&" : "?") + "retry=1";
+    }, 700 + Math.random() * 800);
+    return;
+  }
   window.dispatchEvent(new Event(EVENT));
 }
 
@@ -49,7 +62,12 @@ export function ImageRefresher() {
     window.addEventListener(EVENT, onBroken);
     const check = setInterval(() => {
       // A picture that failed before the page finished loading never reports it, so look for those too.
-      const failed = Array.from(document.images).some((img) => img.complete && img.naturalWidth === 0 && (img.currentSrc.includes("/storage/") || img.currentSrc.includes("/img/")));
+      let failed = false;
+      for (const img of Array.from(document.images)) {
+        if (!img.complete || img.naturalWidth > 0 || !(img.currentSrc.includes("/storage/") || img.currentSrc.includes("/img/"))) continue;
+        if (img.dataset.retried) failed = true;
+        else reportBrokenImage({ currentTarget: img }); // it failed before the page could hear about it: give it its retry
+      }
       if (failed || document.querySelector("[data-missing-image]")) onBroken();
     }, 5000);
     // Links last 12 hours; refresh well before that while the page stays open.
