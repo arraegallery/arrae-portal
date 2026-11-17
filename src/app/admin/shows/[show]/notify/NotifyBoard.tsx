@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { renderEmail } from "@/lib/email";
 import { buildWelcome, type WelcomeArtist, type WelcomeDropoff, type WelcomeGroup, type WelcomeShow, type WelcomeTemplates } from "@/lib/welcome";
-import { saveWelcomeTemplates, sendWelcome, sendWelcomeTest } from "./actions";
+import { finishWelcome, saveWelcome, sendWelcomeBatch, testWelcome } from "./actions";
 
 const input = "mt-1 w-full rounded-md bg-white px-3 py-2 text-sm ring-1 ring-line";
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" });
@@ -57,6 +57,46 @@ export function NotifyBoard({
       else n.add(id);
       return n;
     });
+  const [progress, setProgress] = useState("");
+  const unwrap = <T,>(r: { ok: true; value: T } | { ok: false; error: string }) => {
+    if (!r.ok) throw new Error(r.error);
+    return r.value;
+  };
+  const sendAll = async () => {
+    const ids = chosen.map((a) => a.id);
+    const sent: string[] = [];
+    const skipped: string[] = [];
+    const already: string[] = [];
+    let firstError: string | null = null;
+    try {
+      // A few at a time, so one slow moment can't time out the whole send.
+      for (let i = 0; i < ids.length; i += 5) {
+        setProgress(`Sending… ${sent.length} of ${ids.length} sent`);
+        const r = unwrap(await sendWelcomeBatch(show.id, group, ids.slice(i, i + 5), templates));
+        sent.push(...r.sent);
+        skipped.push(...r.skipped);
+        already.push(...r.already);
+        firstError ??= r.firstError;
+      }
+    } catch (e) {
+      firstError = (e as Error).message;
+    } finally {
+      setProgress("");
+    }
+    const notSent = chosen.map((a) => a.name).filter((n) => !sent.includes(n) && !skipped.includes(n) && !already.includes(n));
+    if (sent.length) await finishWelcome(show.id, group, sent.length, notSent.length);
+    setConfirming(false);
+    router.refresh();
+    setPicked((p) => new Set([...p].filter((id) => !chosen.some((a) => a.id === id && (sent.includes(a.name) || already.includes(a.name))))));
+    const parts = [`Sent to ${sent.length} of ${ids.length} artist${ids.length === 1 ? "" : "s"}.`];
+    if (already.length) parts.push(`Already sent before, so skipped: ${already.join(", ")}.`);
+    if (skipped.length) parts.push(`Skipped (no valid email): ${skipped.join(", ")}.`);
+    if (notSent.length) {
+      parts.push(`Not sent: ${notSent.join(", ")}${firstError ? ` (${firstError})` : ""}. They're still ticked, so you can press send again.`);
+      throw new Error(parts.join(" "));
+    }
+    return parts.join(" ");
+  };
   const run = (f: () => Promise<string | void>) =>
     start(async () => {
       setStatus(null);
@@ -204,7 +244,7 @@ export function NotifyBoard({
                 <p className="mb-2 text-sm">
                   <span className="text-muted">To:</span> {sample?.email} · <span className="text-muted">Subject:</span> {email.subject}
                 </p>
-                <iframe title="Email preview" srcDoc={renderEmail(email)} className="h-[40rem] w-full rounded-md ring-1 ring-line" sandbox="" />
+                <iframe title="Email preview" srcDoc={renderEmail(email)} className="h-[40rem] w-full rounded-md ring-1 ring-line" sandbox="allow-same-origin" />
               </>
             ) : (
               <p className="text-sm text-muted">Nobody to preview yet.</p>
@@ -214,12 +254,12 @@ export function NotifyBoard({
           <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-lg bg-white p-4 shadow ring-1 ring-line">
             {!confirming ? (
               <>
-                <button disabled={pending} onClick={() => run(async () => (await saveWelcomeTemplates(show.id, templates), "Saved."))} className="rounded-md px-4 py-2 text-sm ring-1 ring-line disabled:opacity-40">
+                <button disabled={pending} onClick={() => run(async () => (unwrap(await saveWelcome(show.id, templates)), "Saved."))} className="rounded-md px-4 py-2 text-sm ring-1 ring-line disabled:opacity-40">
                   Save
                 </button>
                 <button
                   disabled={!configured || pending || !sample}
-                  onClick={() => run(async () => `Test sent to ${await sendWelcomeTest(show.id, group, templates, sample?.id)}. Check your inbox.`)}
+                  onClick={() => run(async () => `Test sent to ${unwrap(await testWelcome(show.id, group, templates, sample?.id))}. Check your inbox.`)}
                   className="rounded-md px-4 py-2 text-sm ring-1 ring-line disabled:opacity-40"
                 >
                   Send a test to me
@@ -237,26 +277,10 @@ export function NotifyBoard({
                 </span>
                 <button
                   disabled={pending}
-                  onClick={() =>
-                    run(async () => {
-                      const r = await sendWelcome(
-                        show.id,
-                        group,
-                        chosen.map((a) => a.id),
-                        templates,
-                      );
-                      setConfirming(false);
-                      router.refresh();
-                      const parts = [`Sent to ${r.sent} artist${r.sent === 1 ? "" : "s"}.`];
-                      if (r.failed) parts.push(`${r.failed} didn't go through (${r.firstError}).`);
-                      if (r.skipped.length) parts.push(`Skipped (no valid email): ${r.skipped.join(", ")}.`);
-                      setPicked((p) => new Set([...p].filter((id) => !chosen.some((a) => a.id === id))));
-                      return parts.join(" ");
-                    })
-                  }
+                  onClick={() => run(sendAll)}
                   className="rounded-md bg-ink px-4 py-2 text-sm text-white disabled:opacity-40"
                 >
-                  {pending ? "Sending…" : "Yes, send"}
+                  {pending ? progress || "Sending…" : "Yes, send"}
                 </button>
                 <button disabled={pending} onClick={() => setConfirming(false)} className="rounded-md px-4 py-2 text-sm ring-1 ring-line">
                   Cancel
