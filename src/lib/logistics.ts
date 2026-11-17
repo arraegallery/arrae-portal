@@ -137,11 +137,7 @@ export async function getLogistics() {
   const artistRows = await db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email, phone: s.artists.phone }).from(s.artists);
   const artist = new Map(artistRows.map((a) => [a.id, a]));
   const signedRows = await db.select({ artistId: s.agreements.artistId, signedAt: s.agreements.signedAt, voidedAt: s.agreements.voidedAt }).from(s.agreements);
-  const obRows = await db.select({ id: s.artists.id, onboarding: s.artists.onboarding }).from(s.artists);
-  const signed = new Set([
-    ...signedRows.filter((r) => r.signedAt && !r.voidedAt).map((r) => r.artistId),
-    ...obRows.filter((r) => (r.onboarding as { agreement?: boolean } | null)?.agreement).map((r) => r.id),
-  ]);
+  const signed = new Set(signedRows.filter((r) => r.signedAt && !r.voidedAt).map((r) => r.artistId));
   const out = [];
   for (const w of windows) {
     const handle = await worksToHandle(w.showId, w.kind as BookingKind);
@@ -227,7 +223,7 @@ export async function bookSlot(opts: { windowId: number; artistId: string; start
     throw new Error(
       opts.linkedArtistIds
         ? "Please sign your Partnership Agreement first. You'll find it at the top of your studio."
-        : "This artist hasn't signed the Partnership Agreement yet. Send it from their artist page (or tick Agreement signed there if they signed outside the portal), then book.",
+        : "This artist hasn't signed the Partnership Agreement in the portal yet. Send it from their artist page, then book once they've signed.",
     );
   if (!w.open && !opts.allowClosed) throw new Error("Booking for this is closed. Send us a message and we'll find a time.");
   const all = await activeBookings([w.id]);
