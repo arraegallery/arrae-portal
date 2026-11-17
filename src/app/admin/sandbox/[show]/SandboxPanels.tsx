@@ -63,6 +63,16 @@ export function FinalizePanel({
   const [error, setError] = useState("");
   const [done, setDone] = useState<number | null>(null);
   const conflicts = finalizeConflicts(items);
+  // Every first-time artist in the sandbox, wherever their works sit (walls or the floor box).
+  const firstTime = [...new Map(items.filter((w) => w.artistKind === "new" && w.artistId).map((w) => [w.artistId!, w])).values()]
+    .map((w) => ({
+      artistId: w.artistId!,
+      artistName: w.artistName,
+      accepted: w.application?.status === "Selected",
+      application: w.application,
+      works: items.filter((x) => x.artistId === w.artistId),
+    }))
+    .sort((a, b) => Number(a.accepted) - Number(b.accepted) || a.artistName.localeCompare(b.artistName));
   const soldOrArchived = items.filter((w) => w.sold || w.archived);
   const artists = new Set(items.map((w) => w.artistId)).size;
   const total = items.reduce((s, w) => s + (w.price ?? 0), 0);
@@ -99,25 +109,26 @@ export function FinalizePanel({
             <b>Not included</b>, and first-time artists here are accepted. Artists see nothing until you release decisions.
           </p>
 
-          {conflicts.length > 0 && (
+          {firstTime.length > 0 && (
             <section className="rounded-lg bg-emerald-50 p-3 ring-1 ring-emerald-200">
               <h3 className="font-medium text-emerald-900">
-                {conflicts.length} first-time artist{conflicts.length === 1 ? "" : "s"} will be accepted for {show.name}
+                {firstTime.length} first-time artist{firstTime.length === 1 ? "" : "s"} in this sandbox
+                {conflicts.length > 0 ? ` (${conflicts.length} will be accepted when you finalize)` : ""}
               </h3>
-              <p className="mt-0.5 text-xs text-emerald-900/80">Finalizing accepts them, whatever their application said before. To leave someone out, take their works out of the sandbox.</p>
+              <p className="mt-0.5 text-xs text-emerald-900/80">Finalizing accepts them all, whatever their application said before. To leave someone out, take their works out of the sandbox.</p>
               <ul className="mt-2 divide-y divide-emerald-200/70">
-                {conflicts.map((c) => (
+                {firstTime.map((c) => (
                   <li key={c.artistId} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
                     <div className="min-w-0 flex-1">
                       <Link href={`/admin/artists/${c.artistId}`} className="font-medium underline-offset-2 hover:underline">
                         {c.artistName}
                       </Link>
                       <span className="ml-2 text-xs text-muted">
-                        {c.application ? `Application: ${c.application.status}` : `No application to ${show.name}`}
+                        {c.accepted ? "Already accepted" : c.application ? `Application: ${c.application.status}` : `No application to ${show.name}`}
                       </span>
                       <p className="truncate text-xs text-muted">{c.works.map((w) => w.title).join(" · ")}</p>
                     </div>
-                    <button
+                    {!c.accepted && <button
                       disabled={busy}
                       onClick={() => {
                         setError("");
@@ -136,7 +147,7 @@ export function FinalizePanel({
                       className="rounded-md bg-emerald-700 px-3 py-1.5 text-white disabled:opacity-50"
                     >
                       {accepting === c.artistId ? "Accepting…" : "Accept artist"}
-                    </button>
+                    </button>}
                   </li>
                 ))}
               </ul>

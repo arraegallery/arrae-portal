@@ -259,13 +259,11 @@ export async function getAgreementAuto(): Promise<{ mode: AutoMode; reminders: b
 }
 
 /**
- * Has this artist (any of their linked records) signed the Partnership Agreement? Signing in the portal
- * ticks onboarding.agreement; ARRAE also ticks it by hand for agreements signed outside the portal.
+ * Has this artist (any of their linked records) signed the Partnership Agreement in the portal?
+ * Only an in-portal signature counts: older copies signed outside it (Google eSignature) don't.
  */
 export async function hasSignedAgreement(artistIds: string[]) {
   if (!artistIds.length) return false;
-  const rows = await db.select({ onboarding: s.artists.onboarding }).from(s.artists).where(inArray(s.artists.id, artistIds));
-  if (rows.some((r) => (r.onboarding as { agreement?: boolean } | null)?.agreement)) return true;
   const [signed] = await db
     .select({ id: s.agreements.id })
     .from(s.agreements)
@@ -295,8 +293,8 @@ export async function offerAgreementOnSignIn(artistIds: string[]) {
     if (w?.id) selected = { id: w.id };
   }
   if (!selected) return;
-  const [artist] = await db.select({ onboarding: s.artists.onboarding }).from(s.artists).where(eq(s.artists.id, selected.id));
-  if (mode === "unsigned" && (artist?.onboarding as { agreement?: boolean } | undefined)?.agreement) return;
+  // "unsigned" = everyone selected without a signature in the portal (older outside copies don't count).
+  if (mode === "unsigned" && (await hasSignedAgreement(artistIds))) return;
   const { id } = await createAgreement(selected.id, "first sign-in");
   await db.insert(s.activity).values({ artistId: selected.id, kind: "note", body: "Asked to sign the Partnership Agreement on first sign-in", actor: "portal" });
   return id;
