@@ -1,6 +1,7 @@
 "use client";
 
 import type { BoardImage } from "@/lib/queries";
+import { reportBrokenImage } from "./ImageRefresher";
 
 /** Shows the work's image, or a quiet placeholder of the right shape while images are still being copied over. */
 export function ArtworkImage({
@@ -20,10 +21,11 @@ export function ArtworkImage({
   const ratio = image?.w && image?.h ? image.w / image.h : fallbackRatio || 0.8;
   if (src) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt={title} loading="lazy" className={`block h-auto w-full ${className}`} style={{ aspectRatio: ratio }} />;
+    return <img src={src} alt={title} loading="lazy" onError={reportBrokenImage} className={`block h-auto w-full ${className}`} style={{ aspectRatio: ratio }} />;
   }
   return (
     <div
+      data-missing-image={image ? "" : undefined}
       className={`flex w-full min-w-24 items-center justify-center bg-[repeating-linear-gradient(45deg,#efebe4,#efebe4_10px,#f5f2ec_10px,#f5f2ec_20px)] p-3 text-center ${size === "full" ? "max-h-[85vh] w-[min(60vw,900px)]" : ""}`}
       style={{ aspectRatio: ratio }}
     >

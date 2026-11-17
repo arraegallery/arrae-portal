@@ -10,7 +10,7 @@ import { STATUS_TONE } from "@/lib/status";
 import { ShowTabs } from "@/components/ShowTabs";
 import type { WallLayout, WallSetup } from "@/lib/walls";
 import { ScaleWall, type WallMover } from "./ScaleWall";
-import { FinalizePanel, WorkDetailsPanel, needsAcceptance } from "./SandboxPanels";
+import { FinalizePanel, RosterReport, WorkDetailsPanel, missingRoster, needsAcceptance } from "./SandboxPanels";
 
 type Show = { id: string; name: string; type: string };
 type Source = "all" | "show" | "waitlist" | "roster";
@@ -24,6 +24,7 @@ export function SandboxBoard({
   works,
   walls,
   layout,
+  collectionArtists,
 }: {
   show: Show;
   shows: Show[];
@@ -31,6 +32,7 @@ export function SandboxBoard({
   works: SandboxWork[];
   walls: WallSetup;
   layout: WallLayout;
+  collectionArtists: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -51,6 +53,7 @@ export function SandboxBoard({
   const [openNote, setOpenNote] = useState<string | null>(null);
   const [openWork, setOpenWork] = useState<string | null>(null);
   const mover = useRef<WallMover | null>(null);
+  const [rosterCheck, setRosterCheck] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   // "cards" or the to-scale wall; remembered on this computer.
   const [view, setView] = useState<"cards" | "scale">("cards");
@@ -290,6 +293,13 @@ export function SandboxBoard({
                 {selected.size ? `Make ${selected.size} possible choice${selected.size === 1 ? "" : "s"}` : "Make all possible choices"}
               </button>
               <button
+                onClick={() => setRosterCheck(true)}
+                title="Roster artists with no work in this sandbox"
+                className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line hover:bg-paper"
+              >
+                Roster check
+              </button>
+              <button
                 disabled={!items.length}
                 onClick={() => setFinalizing(true)}
                 title="Make every work in the sandbox Selected for this show"
@@ -360,7 +370,7 @@ export function SandboxBoard({
                     <button
                       onClick={() => remove(w.id)}
                       title="Take out of sandbox"
-                      className="absolute right-2 top-2 h-6 w-6 rounded-full bg-white/90 text-sm text-muted ring-1 ring-line opacity-0 group-hover:opacity-100"
+                      className="absolute right-2 top-2 h-6 w-6 rounded-full bg-white/90 text-sm text-muted ring-1 ring-line opacity-60 group-hover:opacity-100"
                     >
                       ×
                     </button>
@@ -504,7 +514,22 @@ export function SandboxBoard({
           )}
         </aside>
       </div>
-      {finalizing && <FinalizePanel show={{ id: show.id, name: show.name }} items={items} onClose={() => setFinalizing(false)} />}
+      {finalizing && (
+        <FinalizePanel
+          show={{ id: show.id, name: show.name }}
+          items={items}
+          missing={missingRoster(collectionArtists, works, new Set(items.map((w) => w.artistId)))}
+          onClose={() => setFinalizing(false)}
+        />
+      )}
+      {rosterCheck && (
+        <RosterReport
+          show={{ id: show.id, name: show.name }}
+          rows={missingRoster(collectionArtists, works, new Set(items.map((w) => w.artistId)))}
+          total={collectionArtists.length}
+          onClose={() => setRosterCheck(false)}
+        />
+      )}
       {openWork && byId.get(openWork) && (
         <WorkDetailsPanel
           work={byId.get(openWork)!}
@@ -512,6 +537,7 @@ export function SandboxBoard({
           selected={selected.has(openWork)}
           onToggleSelect={() => toggleSelect(openWork)}
           onAdd={() => add(openWork)}
+          onRemove={() => remove(openWork)}
           mover={view === "scale" && inSandbox.has(openWork) ? mover.current : null}
           onClose={() => setOpenWork(null)}
         />
