@@ -2,12 +2,19 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { renderEmail } from "@/lib/email";
 import { buildWelcome, type WelcomeArtist, type WelcomeDropoff, type WelcomeGroup, type WelcomeShow, type WelcomeTemplates } from "@/lib/welcome";
 import { finishWelcome, saveWelcome, sendWelcomeBatch, testWelcome } from "./actions";
 
 const input = "mt-1 w-full rounded-md bg-white px-3 py-2 text-sm ring-1 ring-line";
+/** A page left open across a portal update can't reach the server any more: say so plainly. */
+const friendly = (m: string) =>
+  /was not found on the server|unexpected response was received|failed to fetch|load failed|network ?error/i.test(m)
+    ? "The portal was updated while this page was open, so nothing went through and nothing was sent. Your wording is kept on this computer. Reload this page (Cmd+R) and try again."
+    : m;
+const draftKey = (showId: string) => `welcome-draft:${showId}`;
+
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" });
 
 export function NotifyBoard({
@@ -40,6 +47,24 @@ export function NotifyBoard({
   const [confirming, setConfirming] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
+
+  // Keep unsaved wording on this computer, so a reload or a failed send never loses it.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(draftKey(show.id));
+      if (raw && raw !== JSON.stringify(initial)) {
+        setTemplates(JSON.parse(raw));
+        setStatus({ ok: true, text: "Brought back your unsaved wording from this computer. Click Save to keep it." });
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    try {
+      if (JSON.stringify(templates) === JSON.stringify(initial)) localStorage.removeItem(draftKey(show.id));
+      else localStorage.setItem(draftKey(show.id), JSON.stringify(templates));
+    } catch {}
+  }, [templates, initial, show.id]);
 
   const list = artists.filter((a) => a.group === group);
   const chosen = list.filter((a) => picked.has(a.id));
@@ -79,7 +104,7 @@ export function NotifyBoard({
         firstError ??= r.firstError;
       }
     } catch (e) {
-      firstError = (e as Error).message;
+      firstError = friendly((e as Error).message);
     } finally {
       setProgress("");
     }
@@ -104,7 +129,7 @@ export function NotifyBoard({
         const text = await f();
         if (text) setStatus({ ok: true, text });
       } catch (e) {
-        setStatus({ ok: false, text: (e as Error).message });
+        setStatus({ ok: false, text: friendly((e as Error).message) });
       }
     });
 
@@ -254,7 +279,7 @@ export function NotifyBoard({
           <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-lg bg-white p-4 shadow ring-1 ring-line">
             {!confirming ? (
               <>
-                <button disabled={pending} onClick={() => run(async () => (unwrap(await saveWelcome(show.id, templates)), "Saved."))} className="rounded-md px-4 py-2 text-sm ring-1 ring-line disabled:opacity-40">
+                <button disabled={pending} onClick={() => run(async () => (unwrap(await saveWelcome(show.id, templates)), router.refresh(), "Saved."))} className="rounded-md px-4 py-2 text-sm ring-1 ring-line disabled:opacity-40">
                   Save
                 </button>
                 <button
