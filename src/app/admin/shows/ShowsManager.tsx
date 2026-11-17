@@ -130,6 +130,9 @@ function ShowCard({ show }: { show: Show }) {
           <Link href={`/admin/sandbox/${show.id}`} className="rounded-md px-2 py-1 ring-1 ring-line hover:bg-paper">
             Sandbox
           </Link>
+          <Link href={`/admin/shows/${show.id}/notify`} className="rounded-md bg-ink px-2 py-1 text-white hover:opacity-90">
+            Notify artists
+          </Link>
         </span>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
