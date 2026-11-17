@@ -257,7 +257,7 @@ export function MessageComposer({ artists, shows, history, me, configured }: { a
             <p className="mb-2 text-sm">
               <span className="text-muted">Subject:</span> {personalize(subject, sample) || <em className="text-muted">no subject yet</em>}
             </p>
-            <iframe title="Email preview" srcDoc={previewHtml} className="h-[34rem] w-full rounded-md ring-1 ring-line" sandbox="" />
+            <iframe title="Email preview" srcDoc={previewHtml} className="h-[34rem] w-full rounded-md ring-1 ring-line" sandbox="allow-same-origin" />
           </div>
 
           <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-lg bg-white p-4 shadow ring-1 ring-line">
