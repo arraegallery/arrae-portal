@@ -49,7 +49,7 @@ export function ImageRefresher() {
     window.addEventListener(EVENT, onBroken);
     const check = setInterval(() => {
       // A picture that failed before the page finished loading never reports it, so look for those too.
-      const failed = Array.from(document.images).some((img) => img.complete && img.naturalWidth === 0 && img.currentSrc.includes("/storage/"));
+      const failed = Array.from(document.images).some((img) => img.complete && img.naturalWidth === 0 && (img.currentSrc.includes("/storage/") || img.currentSrc.includes("/img/")));
       if (failed || document.querySelector("[data-missing-image]")) onBroken();
     }, 5000);
     // Links last 12 hours; refresh well before that while the page stays open.
