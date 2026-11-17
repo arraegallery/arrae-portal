@@ -90,8 +90,8 @@ export async function getBoard(showId: string) {
   });
 
   const waitingSet = new Set(waiting.map((w) => w.id));
-  // Roster = selected for any other show before (an accepted application or a selected work),
-  // whether or not they sent an application this time.
+  // Roster = has a collection on the ARRAE site, or was selected for any other show before (an
+  // accepted application or a selected work), whether or not they sent an application this time.
   const [pastApps, pastWorks] = await Promise.all([
     db
       .select({ artistId: s.applications.artistId })
@@ -104,6 +104,7 @@ export async function getBoard(showId: string) {
       .where(and(inArray(s.works.artistId, artistIds), eq(s.showWorks.status, "Selected"), ne(s.showWorks.showId, showId))),
   ]);
   const rosterSet = new Set([...pastApps, ...pastWorks].map((x) => x.artistId));
+  for (const a of artists) if (a.shopifyCollectionHandle) rosterSet.add(a.id);
   // Works from this board that were selected for another show: not new to ARRAE.
   const boardWorkIds = rows.map((r) => r.work.id);
   const shownElsewhere = new Set(
@@ -276,9 +277,10 @@ export async function getSandbox(showId: string) {
     db.select().from(s.sandboxItems).where(eq(s.sandboxItems.showId, showId)).orderBy(asc(s.sandboxItems.position), asc(s.sandboxItems.addedAt)),
     db.select({ id: s.applications.id, artistId: s.applications.artistId, showId: s.applications.showId, status: s.applications.status }).from(s.applications),
   ]);
-  // Same rule as the review board: roster = an accepted application or a selected work in another show.
+  // Same rule as the review board: roster = a collection on the ARRAE site, an accepted application
+  // or a selected work in another show.
   const artistOfWork = new Map(works.map((w) => [w.id, w.artistId]));
-  const roster = new Set<string>();
+  const roster = new Set<string>(artists.filter((a) => a.collection).map((a) => a.id));
   for (const a of apps) if (a.status === "Selected" && a.showId !== showId) roster.add(a.artistId);
   for (const x of showWorks) {
     const aid = artistOfWork.get(x.workId);
@@ -422,7 +424,7 @@ export async function getArtistDirectory() {
 /** Everyone we could email, with what they've applied to, for the Messages page. */
 export async function getMessageRecipients() {
   const [artists, apps, works, waiting, shows, history] = await Promise.all([
-    db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email }).from(s.artists).orderBy(asc(s.artists.name)),
+    db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email, collection: s.artists.shopifyCollectionHandle }).from(s.artists).orderBy(asc(s.artists.name)),
     db.select({ artistId: s.applications.artistId, showId: s.applications.showId, status: s.applications.status }).from(s.applications),
     db
       .select({ artistId: s.works.artistId, showId: s.showWorks.showId, status: s.showWorks.status })
@@ -447,12 +449,13 @@ export async function getMessageRecipients() {
   return {
     shows,
     history: history.map((h) => ({ id: h.id, body: h.body, actor: h.actor, at: h.createdAt.toISOString() })),
-    artists: artists.map((a) => {
+    artists: artists.map(({ collection, ...a }) => {
       const m = perArtist.get(a.id) ?? new Map();
       const entries = [...m.entries()];
       return {
         ...a,
-        roster: entries.some(([, v]) => v.selected),
+        hasCollection: !!collection,
+        roster: !!collection || entries.some(([, v]) => v.selected),
         onWaitlist: waitingSet.has(a.id),
         appliedTo: entries.map(([k]) => k),
         selectedFor: entries.filter(([, v]) => v.selected).map(([k]) => k),

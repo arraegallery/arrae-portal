@@ -332,7 +332,7 @@ export async function bookMyTime(windowId: number, start: string, note?: string)
   const [w] = await db.select().from(s.bookingWindows).where(eq(s.bookingWindows.id, windowId));
   const handle = await worksToHandle(w.showId, w.kind as BookingKind);
   const artistId = me.artistIds.find((id) => handle.has(id))!;
-  const r = await bookSlot({ windowId, artistId, start, by: me.email, note });
+  const r = await bookSlot({ windowId, artistId, start, by: me.email, note, linkedArtistIds: me.artistIds });
   const when = formatSlot(r.booking.startsAt.toISOString());
   const [show] = await db.select({ name: s.shows.name }).from(s.shows).where(eq(s.shows.id, r.window.showId));
   const label = KIND_LABEL[r.window.kind as BookingKind];

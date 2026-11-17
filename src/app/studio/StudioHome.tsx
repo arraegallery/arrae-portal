@@ -577,6 +577,14 @@ function BookTime({ b }: { b: StudioBookings[number] }) {
         {b.location ? ` · ${b.location}` : ""}
       </p>
       {b.note && <p className="mt-2 whitespace-pre-line text-sm">{b.note}</p>}
+      {b.needsAgreement && !b.booking && (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">
+          <span className="min-w-0 flex-1">Please sign your Partnership Agreement first. As soon as it&rsquo;s signed, the drop-off calendar opens here.</span>
+          <Link href="/studio/agreement" className="rounded-md bg-ink px-3 py-1.5 text-white">
+            Read and sign
+          </Link>
+        </div>
+      )}
       {b.booking && !changing && (
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-900 ring-1 ring-emerald-200">
@@ -602,6 +610,7 @@ function BookTime({ b }: { b: StudioBookings[number] }) {
         </div>
       )}
       {changing &&
+        !(b.needsAgreement && !b.booking) &&
         (b.days.length === 0 ? (
           <p className="mt-4 text-sm text-muted">There are no open times left. Send us a message and we&rsquo;ll find one.</p>
         ) : (

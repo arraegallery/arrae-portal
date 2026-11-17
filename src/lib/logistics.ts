@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema as s } from "@/db";
 import { readOnboarding } from "./onboarding";
+import { hasSignedAgreement } from "./agreement";
 
 /** Drop-off and pick-up booking. All times are gallery time (Miami). */
 export const GALLERY_TZ = "America/New_York";
@@ -135,6 +136,12 @@ export async function getLogistics() {
   const bookings = await activeBookings(windows.map((w) => w.id));
   const artistRows = await db.select({ id: s.artists.id, name: s.artists.name, email: s.artists.email, phone: s.artists.phone }).from(s.artists);
   const artist = new Map(artistRows.map((a) => [a.id, a]));
+  const signedRows = await db.select({ artistId: s.agreements.artistId, signedAt: s.agreements.signedAt, voidedAt: s.agreements.voidedAt }).from(s.agreements);
+  const obRows = await db.select({ id: s.artists.id, onboarding: s.artists.onboarding }).from(s.artists);
+  const signed = new Set([
+    ...signedRows.filter((r) => r.signedAt && !r.voidedAt).map((r) => r.artistId),
+    ...obRows.filter((r) => (r.onboarding as { agreement?: boolean } | null)?.agreement).map((r) => r.id),
+  ]);
   const out = [];
   for (const w of windows) {
     const handle = await worksToHandle(w.showId, w.kind as BookingKind);
@@ -164,8 +171,8 @@ export async function getLogistics() {
       open: w.open,
       summary: windowSummary(w),
       slots: windowSlots(w, mine),
-      bookings: mine.map((b) => ({ id: b.id, artistId: b.artistId, artist: artist.get(b.artistId) ?? null, start: b.startsAt.toISOString(), end: b.endsAt.toISOString(), note: b.note, bookedBy: b.bookedBy, works: works(b.artistId) })),
-      unbooked: [...handle.keys()].filter((id) => !mine.some((b) => b.artistId === id)).map((id) => ({ artistId: id, artist: artist.get(id) ?? null, works: works(id) })),
+      bookings: mine.map((b) => ({ id: b.id, artistId: b.artistId, artist: artist.get(b.artistId) ?? null, start: b.startsAt.toISOString(), end: b.endsAt.toISOString(), note: b.note, bookedBy: b.bookedBy, agreementSigned: signed.has(b.artistId), works: works(b.artistId) })),
+      unbooked: [...handle.keys()].filter((id) => !mine.some((b) => b.artistId === id)).map((id) => ({ artistId: id, artist: artist.get(id) ?? null, agreementSigned: signed.has(id), works: works(id) })),
     });
   }
   return { windows: out, shows: shows.map((x) => ({ id: x.id, name: x.name })) };
@@ -181,6 +188,7 @@ export async function getStudioBookings(artistIds: string[]) {
   // Being asked to drop off would give away a decision, so wait until the artist has been told.
   const told = (showId: string) => !!shows.find((x) => x.id === showId)?.released || apps.some((a) => a.showId === showId && !!a.notified);
   const bookings = await activeBookings(windows.map((w) => w.id));
+  const signed = await hasSignedAgreement(artistIds);
   const out = [];
   for (const w of windows) {
     if (!told(w.showId)) continue;
@@ -195,6 +203,8 @@ export async function getStudioBookings(artistIds: string[]) {
       summary: windowSummary(w),
       location: w.location,
       note: w.note,
+      // Everyone exhibiting signs the Partnership Agreement before they can book a drop-off.
+      needsAgreement: w.kind === "dropoff" && !signed,
       works: myWorks.map((r) => r.work.title),
       booking: mine ? { id: mine.id, start: mine.startsAt.toISOString(), end: mine.endsAt.toISOString() } : null,
       days: windowSlots(
@@ -210,9 +220,15 @@ export async function getStudioBookings(artistIds: string[]) {
  * Books (or moves) an artist's slot in a window. One active booking per artist per window:
  * booking again replaces the old time. Checks the slot is real and still has room.
  */
-export async function bookSlot(opts: { windowId: number; artistId: string; start: string; by: string; note?: string | null; allowClosed?: boolean }) {
+export async function bookSlot(opts: { windowId: number; artistId: string; start: string; by: string; note?: string | null; allowClosed?: boolean; linkedArtistIds?: string[] }) {
   const [w] = await db.select().from(s.bookingWindows).where(eq(s.bookingWindows.id, opts.windowId));
   if (!w) throw new Error("That booking calendar no longer exists");
+  if (w.kind === "dropoff" && !(await hasSignedAgreement(opts.linkedArtistIds ?? [opts.artistId])))
+    throw new Error(
+      opts.linkedArtistIds
+        ? "Please sign your Partnership Agreement first. You'll find it at the top of your studio."
+        : "This artist hasn't signed the Partnership Agreement yet. Send it from their artist page (or tick Agreement signed there if they signed outside the portal), then book.",
+    );
   if (!w.open && !opts.allowClosed) throw new Error("Booking for this is closed. Send us a message and we'll find a time.");
   const all = await activeBookings([w.id]);
   const others = all.filter((b) => b.artistId !== opts.artistId);

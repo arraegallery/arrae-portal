@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { db, schema as s } from "@/db";
 import { AGREEMENT_TITLE, ESIGN_CONSENT } from "./agreement-text";
@@ -258,16 +258,42 @@ export async function getAgreementAuto(): Promise<{ mode: AutoMode; reminders: b
   return { mode: mode === "off" || mode === "all" ? mode : "unsigned", reminders: get("agreement_reminders") !== "off" };
 }
 
+/**
+ * Has this artist (any of their linked records) signed the Partnership Agreement? Signing in the portal
+ * ticks onboarding.agreement; ARRAE also ticks it by hand for agreements signed outside the portal.
+ */
+export async function hasSignedAgreement(artistIds: string[]) {
+  if (!artistIds.length) return false;
+  const rows = await db.select({ onboarding: s.artists.onboarding }).from(s.artists).where(inArray(s.artists.id, artistIds));
+  if (rows.some((r) => (r.onboarding as { agreement?: boolean } | null)?.agreement)) return true;
+  const [signed] = await db
+    .select({ id: s.agreements.id })
+    .from(s.agreements)
+    .where(and(inArray(s.agreements.artistId, artistIds), isNotNull(s.agreements.signedAt), isNull(s.agreements.voidedAt)))
+    .limit(1);
+  return !!signed;
+}
+
 /** Called when an artist opens their studio: sets up their agreement if the auto setting covers them. */
 export async function offerAgreementOnSignIn(artistIds: string[]) {
   if (!artistIds.length || (await currentAgreement(artistIds))) return;
   const { mode } = await getAgreementAuto();
   if (mode === "off") return;
-  const [selected] = await db
+  // Selected = an accepted application, or a work selected for a show (roster artists picked in the sandbox).
+  let [selected] = await db
     .select({ id: s.applications.artistId })
     .from(s.applications)
     .where(and(inArray(s.applications.artistId, artistIds), eq(s.applications.status, "Selected")))
     .limit(1);
+  if (!selected) {
+    const [w] = await db
+      .select({ id: s.works.artistId })
+      .from(s.showWorks)
+      .innerJoin(s.works, eq(s.works.id, s.showWorks.workId))
+      .where(and(inArray(s.works.artistId, artistIds), eq(s.showWorks.status, "Selected")))
+      .limit(1);
+    if (w?.id) selected = { id: w.id };
+  }
   if (!selected) return;
   const [artist] = await db.select({ onboarding: s.artists.onboarding }).from(s.artists).where(eq(s.artists.id, selected.id));
   if (mode === "unsigned" && (artist?.onboarding as { agreement?: boolean } | undefined)?.agreement) return;
