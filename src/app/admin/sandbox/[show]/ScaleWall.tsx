@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { saveSandboxLayout, saveWallSetup } from "../../actions";
+import { reportBrokenImage } from "@/components/ImageRefresher";
 import { formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { SandboxWork } from "@/lib/queries";
 import { FLOOR, feetInches, fitIntoGaps, hangWorks, startsOnFloor, realSize, UNKNOWN_SIZE, type Wall, type WallLayout, type WallSetup, type WallSpot } from "@/lib/walls";
@@ -261,9 +262,14 @@ export function ScaleWall({
       >
         {w.image?.thumb ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={w.image.thumb} alt={w.title} draggable={false} className="pointer-events-none h-full w-full object-cover" />
+          <img src={w.image.thumb} alt={w.title} draggable={false} onError={reportBrokenImage} className="pointer-events-none h-full w-full object-cover" />
         ) : (
-          <span className="flex h-full items-center justify-center p-0.5 text-center text-[9px] leading-tight text-muted">{w.title}</span>
+          <span
+            data-missing-image={w.image ? "" : undefined}
+            className="flex h-full items-center justify-center p-0.5 text-center text-[9px] leading-tight text-muted"
+          >
+            {w.title}
+          </span>
         )}
         <span className="pointer-events-none absolute inset-x-0 bottom-0 hidden bg-black/60 px-1 py-0.5 text-[10px] leading-tight text-white group-hover:block">
           {w.title} · {p.known ? `${feetInches(p.height)} × ${feetInches(p.width)}` : "no size"}
