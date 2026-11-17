@@ -355,6 +355,7 @@ function BookingRow({ b, w, what, doneLabel }: { b: Win["bookings"][number]; w: 
           {b.artist?.name ?? b.artistId}
         </Link>
         <span className="text-xs text-muted">{[b.artist?.phone, b.artist?.email].filter(Boolean).join(" · ")}</span>
+        {w.kind === "dropoff" && !b.agreementSigned && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-900 ring-1 ring-amber-200">Agreement not signed</span>}
         <span className="ml-auto flex gap-2 text-xs">
           <button onClick={() => setMoving(!moving)} className="text-muted underline">
             Change time
@@ -385,6 +386,7 @@ function UnbookedRow({ u, w, what, doneLabel }: { u: Win["unbooked"][number]; w:
           {u.artist?.name ?? u.artistId}
         </Link>
         <span className="text-xs text-muted">{[u.artist?.phone, u.artist?.email].filter(Boolean).join(" · ")}</span>
+        {w.kind === "dropoff" && !u.agreementSigned && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-900 ring-1 ring-amber-200">Agreement not signed</span>}
         <span className="ml-auto flex gap-3 text-xs">
           <button onClick={() => setBooking(!booking)} className="underline">
             Book a time for them

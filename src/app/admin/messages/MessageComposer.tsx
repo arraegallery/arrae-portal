@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { sendMessageToArtists, sendTestMessage } from "../actions";
 import { personalize, renderEmail } from "@/lib/email";
 
-type Artist = { id: string; name: string; email: string; roster: boolean; onWaitlist: boolean; appliedTo: string[]; selectedFor: string[] };
+type Artist = { id: string; name: string; email: string; hasCollection: boolean; roster: boolean; onWaitlist: boolean; appliedTo: string[]; selectedFor: string[] };
 type Show = { id: string; name: string; type: string };
 type Sent = { id: number; body: string; actor: string | null; at: string };
 
@@ -14,7 +14,7 @@ export function MessageComposer({ artists, shows, history, me, configured }: { a
   const [audience, setAudience] = useState<Audience>("roster");
   const [showId, setShowId] = useState("");
   const [showScope, setShowScope] = useState<"selected" | "applied">("selected");
-  // Returning = selected for some other show before; first time = this is their first show with ARRAE.
+  // Returning = has a collection on the ARRAE site or was selected for another show; first time = neither.
   const [pastShows, setPastShows] = useState<"all" | "returning" | "new">("all");
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [added, setAdded] = useState<Set<string>>(new Set());
@@ -37,7 +37,7 @@ export function MessageComposer({ artists, shows, history, me, configured }: { a
         if (audience === "waitlist" && !a.onWaitlist) return false;
         if (showId && !(showScope === "selected" ? a.selectedFor : a.appliedTo).includes(showId)) return false;
         if (showId && pastShows !== "all") {
-          const before = a.selectedFor.some((id) => id !== showId);
+          const before = a.hasCollection || a.selectedFor.some((id) => id !== showId);
           if (pastShows === "returning" ? !before : before) return false;
         }
         return true;

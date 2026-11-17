@@ -228,7 +228,7 @@ async function sandboxFinalizeWorks(showId: string): Promise<FinalizeWork[]> {
   const artistIds = [...new Set(works.map((w) => w.artistId).filter((x): x is string => !!x))];
   if (!artistIds.length) return works.map((w) => ({ ...w, artistName: "Unknown artist", artistKind: "new" as const, application: null }));
   const [artists, apps, pastWorks] = await Promise.all([
-    db.select({ id: s.artists.id, name: s.artists.name }).from(s.artists).where(inArray(s.artists.id, artistIds)),
+    db.select({ id: s.artists.id, name: s.artists.name, collection: s.artists.shopifyCollectionHandle }).from(s.artists).where(inArray(s.artists.id, artistIds)),
     db.select({ id: s.applications.id, artistId: s.applications.artistId, showId: s.applications.showId, status: s.applications.status }).from(s.applications).where(inArray(s.applications.artistId, artistIds)),
     db
       .select({ artistId: s.works.artistId })
@@ -237,7 +237,11 @@ async function sandboxFinalizeWorks(showId: string): Promise<FinalizeWork[]> {
       .where(and(inArray(s.works.artistId, artistIds), eq(s.showWorks.status, "Selected"), ne(s.showWorks.showId, showId))),
   ]);
   const name = new Map(artists.map((a) => [a.id, a.name]));
-  const roster = new Set([...apps.filter((a) => a.status === "Selected" && a.showId !== showId).map((a) => a.artistId), ...pastWorks.map((x) => x.artistId!)]);
+  const roster = new Set([
+    ...artists.filter((a) => a.collection).map((a) => a.id),
+    ...apps.filter((a) => a.status === "Selected" && a.showId !== showId).map((a) => a.artistId),
+    ...pastWorks.map((x) => x.artistId!),
+  ]);
   const here = new Map(apps.filter((a) => a.showId === showId).map((a) => [a.artistId, { id: a.id, status: a.status }]));
   return works.map((w) => ({
     id: w.id,
