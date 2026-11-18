@@ -25,6 +25,7 @@ export function SandboxBoard({
   walls,
   layout,
   collectionArtists,
+  embedded,
 }: {
   show: Show;
   shows: Show[];
@@ -33,6 +34,8 @@ export function SandboxBoard({
   walls: WallSetup;
   layout: WallLayout;
   collectionArtists: { id: string; name: string }[];
+  /** Shown inside the one-page show view: no title, tabs or "possible choices"; the sandbox itself is the decision. */
+  embedded?: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -164,6 +167,7 @@ export function SandboxBoard({
 
   return (
     <main className="mx-auto max-w-[1600px] px-4 pb-24">
+      {!embedded && (<>
       <section className="flex flex-wrap items-end justify-between gap-4 pt-6">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted">Sandbox · private to ARRAE</p>
@@ -242,6 +246,7 @@ export function SandboxBoard({
       </section>
 
       <ShowTabs showId={show.id} active="sandbox" sandboxCount={items.length} />
+      </>)}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
         {/* The sandbox wall */}
@@ -285,6 +290,7 @@ export function SandboxBoard({
                   </button>
                 </>
               )}
+              {!embedded && (
               <button
                 disabled={!items.length}
                 onClick={() => promote(selected.size ? [...selected] : order)}
@@ -292,6 +298,7 @@ export function SandboxBoard({
               >
                 {selected.size ? `Make ${selected.size} possible choice${selected.size === 1 ? "" : "s"}` : "Make all possible choices"}
               </button>
+              )}
               <button
                 onClick={() => setRosterCheck(true)}
                 title="Roster artists with no work in this sandbox"
@@ -307,12 +314,14 @@ export function SandboxBoard({
               >
                 Finalize…
               </button>
+              {!embedded && (<>
               <Link href={`/admin/shows/${show.id}/notify`} title="Welcome emails and drop-off booking for the selected artists" className="rounded-md bg-ink px-3 py-1.5 text-white">
                 Notify artists
               </Link>
               <Link href={`/admin/shows/${show.id}/works`} title="After finalizing: every work with its drop-off status, as pictures or a list" className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line hover:bg-paper">
                 Works &amp; drop-off
               </Link>
+              </>)}
             </div>
           </div>
 
@@ -395,9 +404,11 @@ export function SandboxBoard({
                         {st && DECIDED.includes(st) ? (
                           <span className={`rounded-full px-2 py-0.5 text-xs ring-1 ${STATUS_TONE[st]}`}>{st === "Shortlist" ? "Possible choice" : st}</span>
                         ) : (
+                          !embedded && (
                           <button onClick={() => promote([w.id])} className="rounded-full bg-white px-2 py-0.5 text-xs ring-1 ring-line hover:bg-paper">
                             Make possible choice
                           </button>
+                          )
                         )}
                         <button
                           onClick={() => setOpenNote(openNote === w.id ? null : w.id)}
@@ -522,6 +533,7 @@ export function SandboxBoard({
       </div>
       {finalizing && (
         <FinalizePanel
+          notifyHref={embedded ? `/admin/s/${show.id}/notify` : undefined}
           show={{ id: show.id, name: show.name }}
           items={items}
           missing={missingRoster(collectionArtists, works, new Set(items.map((w) => w.artistId)))}

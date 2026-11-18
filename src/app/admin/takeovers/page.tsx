@@ -6,5 +6,5 @@ import { defaultShow, getShows } from "@/lib/queries";
 export default async function TakeoversHome() {
   await requireOwner();
   const show = defaultShow(await getShows(), "Takeover");
-  redirect(show ? `/admin/review/${show.id}` : "/admin/shows");
+  redirect(show ? `/admin/s/${show.id}` : "/admin/s");
 }

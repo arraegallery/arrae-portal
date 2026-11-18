@@ -48,7 +48,7 @@ function useLocal<T extends string>(key: string, initial: T) {
   return [v, set] as const;
 }
 
-export function Dashboard({ layout: initial, data, modules }: { layout: (string | null)[]; data: DashboardData; modules: Mod[] }) {
+export function Dashboard({ layout: initial, data, modules, top }: { layout: (string | null)[]; data: DashboardData; modules: Mod[]; /** Shown above the cards: the shows and what needs you. */ top?: React.ReactNode }) {
   const [layout, setLayout] = useState(initial);
   const [editing, setEditing] = useState(false);
   const [, start] = useTransition();
@@ -66,7 +66,7 @@ export function Dashboard({ layout: initial, data, modules }: { layout: (string 
       <section className="flex flex-wrap items-end justify-between gap-4 py-6">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted">{today}</p>
-          <h1 className="font-display text-4xl">Dashboard</h1>
+          <h1 className="font-display text-4xl">Home</h1>
         </div>
         <div className="flex items-center gap-2 text-sm">
           {editing && lastRowEmpty && (
@@ -84,6 +84,7 @@ export function Dashboard({ layout: initial, data, modules }: { layout: (string 
           </button>
         </div>
       </section>
+      {top}
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {layout.map((id, i) => {

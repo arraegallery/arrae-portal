@@ -27,6 +27,7 @@ export function NotifyBoard({
   studioUrl,
   me,
   configured,
+  embedded,
 }: {
   show: WelcomeShow;
   released: boolean;
@@ -37,6 +38,8 @@ export function NotifyBoard({
   studioUrl: string;
   me: string;
   configured: boolean;
+  /** Inside the one-page show view, which has its own title. */
+  embedded?: boolean;
 }) {
   const router = useRouter();
   const [group, setGroup] = useState<WelcomeGroup>("returning");
@@ -135,6 +138,7 @@ export function NotifyBoard({
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-24">
+{!embedded && (
       <section className="py-6">
         <p className="text-xs uppercase tracking-[0.2em] text-muted">Private to ARRAE · {show.name}</p>
         <h1 className="font-display text-4xl">Notify artists</h1>
@@ -143,6 +147,7 @@ export function NotifyBoard({
           drop-off dates and what to bring, with a button to sign in and pick a drop-off time. Replies go to hello@arraegallery.com.
         </p>
       </section>
+      )}
 
       <div className="mb-4 space-y-2 text-sm">
         <p className={`rounded-md px-3 py-2 ring-1 ${released ? "bg-emerald-50 text-emerald-900 ring-emerald-200" : "bg-amber-50 text-amber-900 ring-amber-200"}`}>

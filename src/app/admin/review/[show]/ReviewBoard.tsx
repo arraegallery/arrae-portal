@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useTransition } from "react";
 import { ShowTabs } from "@/components/ShowTabs";
 import { ShowPicker } from "@/components/ShowPicker";
 import { EmailArtistBox } from "@/components/EmailArtistBox";
@@ -22,6 +22,9 @@ import {
 
 type View = "artists" | "works";
 const WORK_DECISIONS: WorkStatus[] = ["Shortlist", "Selected", "Waitlist", "Not included"];
+/** On the one-page show view, a work is either put in the sandbox or passed on; the sandbox decides the rest. */
+const SIMPLE_DECISIONS: WorkStatus[] = ["Not included"];
+const Simple = createContext(false);
 const OPEN: (ApplicationStatus | WorkStatus)[] = ["New", "Submitted", "In review", "Shortlist"];
 
 function Chip({ status }: { status: string }) {
@@ -41,6 +44,7 @@ export function ReviewBoard({
   artists,
   focusArtist,
   focusWork,
+  embedded,
 }: {
   show: { id: string; name: string; type: string };
   entries: BoardEntry[];
@@ -52,6 +56,8 @@ export function ReviewBoard({
   /** Opened from a link, such as the New page: show this artist's application or this work. */
   focusArtist?: string;
   focusWork?: string;
+  /** Shown inside the one-page show view: no title or tabs of its own, and only Sandbox / Pass per work. */
+  embedded?: boolean;
 }) {
   const [entries, setEntries] = useState(initial);
   useEffect(() => setEntries(initial), [initial]);
@@ -149,7 +155,9 @@ export function ReviewBoard({
   });
 
   return (
+    <Simple.Provider value={!!embedded}>
     <main className="mx-auto max-w-[1600px] px-4 pb-24">
+      {!embedded && (<>
       <section className="flex flex-wrap items-end justify-between gap-4 pt-6">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted">{show.type === "Takeover" ? "Takeovers" : "Reviews"}</p>
@@ -187,6 +195,7 @@ export function ReviewBoard({
         </dl>
       </section>
       <ShowTabs showId={show.id} active="review" sandboxCount={sandbox.size} newCount={entries.filter((e) => e.group === "New applicant" && e.application && e.application.status !== "Withdrawn").length} />
+      </>)}
 
       <section className="z-20 -mx-4 md:sticky md:top-[57px] mb-6 mt-4 flex flex-wrap items-center gap-2 border-y border-line bg-paper/95 px-4 py-2 text-sm backdrop-blur">
         <div className="flex rounded-md bg-white p-0.5 ring-1 ring-line">
@@ -248,13 +257,13 @@ export function ReviewBoard({
                 {e.application?.flag && <span className="text-xs text-amber-700">{e.application.flag}</span>}
                 {e.application && (
                   <div className="ml-auto flex flex-wrap gap-1">
-                    {(["Shortlist", "Selected", "Waitlist", "Request other works", "Not selected"] as ApplicationStatus[]).map((s) => (
+                    {((embedded ? ["Waitlist", "Request other works"] : ["Shortlist", "Selected", "Waitlist", "Request other works", "Not selected"]) as ApplicationStatus[]).map((s) => (
                       <button
                         key={s}
                         onClick={() => updateApplication(e.artist.id, e.application!.id, s)}
                         className={`rounded-full px-2.5 py-1 text-xs ring-1 ${e.application!.status === s ? STATUS_TONE[s] + " font-medium" : "bg-white ring-line hover:bg-paper"}`}
                       >
-                        {s}
+                        {embedded && s === "Request other works" ? "Ask for more works" : s}
                       </button>
                     ))}
                   </div>
@@ -330,15 +339,23 @@ export function ReviewBoard({
             </dl>
             {lightboxWork.description && <p className="mt-4 whitespace-pre-line text-sm leading-relaxed">{lightboxWork.description}</p>}
             <div className="mt-6">
-              <p className="mb-2 text-xs uppercase tracking-wider text-muted">Decision for {show.name}</p>
+              <p className="mb-2 text-xs uppercase tracking-wider text-muted">{embedded ? "Sandbox or pass" : `Decision for ${show.name}`}</p>
               <div className="flex flex-wrap gap-1.5">
-                {WORK_DECISIONS.map((s) => (
+                {embedded && (
+                  <button
+                    onClick={() => toggleSandbox(lightboxWork.id)}
+                    className={`rounded-full px-3 py-1.5 text-sm ring-1 ${sandbox.has(lightboxWork.id) ? "bg-ink font-medium text-white ring-ink" : "bg-white ring-line"}`}
+                  >
+                    {sandbox.has(lightboxWork.id) ? "★ In sandbox" : "☆ Sandbox"}
+                  </button>
+                )}
+                {(embedded ? SIMPLE_DECISIONS : WORK_DECISIONS).map((s) => (
                   <button
                     key={s}
                     onClick={() => updateWork(lightbox.artist.id, lightboxWork.id, s)}
                     className={`rounded-full px-3 py-1.5 text-sm ring-1 ${lightboxWork.status === s ? STATUS_TONE[s] + " font-medium" : "bg-white ring-line"}`}
                   >
-                    {s}
+                    {embedded && s === "Not included" ? "✕ Pass" : s}
                   </button>
                 ))}
               </div>
@@ -369,6 +386,7 @@ export function ReviewBoard({
 
       {artist && <ArtistDrawer entry={artist} showId={show.id} showName={show.name} onClose={() => setOpenArtist(null)} onDecide={updateApplication} onAddNote={(body) => saveNote(artist.artist.id, body)} onEmailed={(sent) => setEntries((es) => es.map((e) => (e.artist.id === artist.artist.id ? { ...e, notes: [sent, ...e.notes] } : e)))} onApplication={(app) => setEntries((es) => es.map((e) => (e.artist.id === artist.artist.id && e.application ? { ...e, application: { ...e.application, status: app.status, extraWorksLeft: app.extraWorksLeft } } : e)))} shows={shows} artists={artists} onOpenWork={(id) => setOpenWork({ artistId: artist.artist.id, workId: id })} />}
     </main>
+    </Simple.Provider>
   );
 }
 
@@ -389,6 +407,8 @@ function WorkCard({
   onSandbox: () => void;
   tall?: boolean;
 }) {
+  const simple = useContext(Simple);
+  const decisions = simple ? SIMPLE_DECISIONS : WORK_DECISIONS;
   const ratio = work.width && work.height ? work.width / work.height : null;
   return (
     <figure className={`group relative overflow-hidden rounded-lg bg-white ring-1 ring-line ${tall ? "w-80 shrink-0" : ""}`}>
@@ -396,10 +416,10 @@ function WorkCard({
         onClick={onSandbox}
         title={inSandbox ? "In your sandbox (click to take out)" : "Add to sandbox"}
         className={`absolute right-2 top-2 z-10 rounded-full px-2 py-0.5 text-xs ring-1 transition ${
-          inSandbox ? "bg-ink text-white ring-ink" : "bg-white/90 ring-line opacity-0 group-hover:opacity-100"
+          inSandbox ? "bg-ink text-white ring-ink" : simple ? "bg-white/90 ring-line" : "bg-white/90 ring-line opacity-0 group-hover:opacity-100"
         }`}
       >
-        {inSandbox ? "✓ Sandbox" : "+ Sandbox"}
+        {inSandbox ? (simple ? "★ In sandbox" : "✓ Sandbox") : simple ? "☆ Sandbox" : "+ Sandbox"}
       </button>
       <button onClick={onOpen} className="block w-full">
         <div className={tall ? "flex h-80 items-center justify-center bg-[#f3f0ea]" : ""}>
@@ -417,17 +437,17 @@ function WorkCard({
             </p>
             {work.archived && <span className="mt-0.5 inline-block rounded bg-paper px-1.5 py-0.5 text-[10px] text-muted ring-1 ring-line">Archived</span>}
           </div>
-          <Chip status={work.status} />
+          {simple ? work.status === "Not included" && <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs text-rose-800 ring-1 ring-rose-200">Passed</span> : <Chip status={work.status} />}
         </div>
         <div className="mt-2 flex gap-1 opacity-70 transition group-hover:opacity-100">
-          {WORK_DECISIONS.map((s) => (
+          {decisions.map((s) => (
             <button
               key={s}
               onClick={() => onDecide(s)}
               title={s}
               className={`flex-1 rounded px-1 py-1 text-[11px] ring-1 ${work.status === s ? STATUS_TONE[s] : "bg-white ring-line hover:bg-paper"}`}
             >
-              {s === "Not included" ? "No" : s}
+              {s === "Not included" ? (simple ? "✕ Pass" : "No") : s}
             </button>
           ))}
         </div>
@@ -461,6 +481,7 @@ function ArtistDrawer({
   artists: { id: string; name: string; email: string }[];
   onOpenWork: (workId: string) => void;
 }) {
+  const simple = useContext(Simple);
   const a = entry.artist;
   const titleOf = new Map(entry.works.map((w) => [w.id, w.title]));
   return (
@@ -493,7 +514,7 @@ function ArtistDrawer({
           <section className="mt-5 rounded-lg bg-white p-4 ring-1 ring-line">
             <p className="text-xs uppercase tracking-wider text-muted">Application · submitted {entry.application.submittedOn}</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {APPLICATION_STATUSES.filter((s) => s !== "Withdrawn").map((s) => (
+              {APPLICATION_STATUSES.filter((s) => (simple ? s === "Waitlist" || s === "Request other works" : s !== "Withdrawn")).map((s) => (
                 <button
                   key={s}
                   onClick={() => onDecide(a.id, entry.application!.id, s)}
