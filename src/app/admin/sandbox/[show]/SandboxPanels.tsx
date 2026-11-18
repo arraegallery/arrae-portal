@@ -51,11 +51,13 @@ export function FinalizePanel({
   items,
   missing,
   onClose,
+  notifyHref,
 }: {
   show: { id: string; name: string };
   items: SandboxWork[];
   missing: MissingArtist[];
   onClose: () => void;
+  notifyHref?: string;
 }) {
   const router = useRouter();
   const [busy, start] = useTransition();
@@ -89,7 +91,7 @@ export function FinalizePanel({
             Artists don&apos;t see anything yet. Next, send the welcome emails: they release the decisions and invite each artist to book their drop-off.
           </p>
           <div className="flex gap-2">
-            <Link href={`/admin/shows/${show.id}/notify`} className="rounded-md bg-ink px-3 py-1.5 text-white">
+            <Link href={notifyHref ?? `/admin/shows/${show.id}/notify`} className="rounded-md bg-ink px-3 py-1.5 text-white">
               Next: notify artists
             </Link>
             <button onClick={onClose} className="rounded-md px-3 py-1.5 ring-1 ring-line">

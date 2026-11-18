@@ -13,7 +13,7 @@ export const MODULES = [
   { id: "gallery", label: "Gallery calendar", href: "/admin/calendar" },
   { id: "activity", label: "Recent portal activity", href: "" },
   { id: "submissions", label: "New submissions", href: "/admin/new" },
-  { id: "dates", label: "Shows & deadlines", href: "/admin/shows" },
+  { id: "dates", label: "Shows & deadlines", href: "/admin/s" },
 ] as const;
 export type ModuleId = (typeof MODULES)[number]["id"];
 export const DEFAULT_LAYOUT: (ModuleId | null)[] = ["messages", "team", "gallery", "activity", null, null];
