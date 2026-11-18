@@ -6,10 +6,10 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { ShowTracker, TrackedWork, TrackStage } from "@/lib/show-tracker";
 import { markWorks } from "../../../logistics/actions";
-import { markAvailableAgain, markUnavailable, passOnWork, stopReplacementInvite, pickReplacement } from "./actions";
+import { markAvailableAgain, markUnavailable, passOnWork, pickReplacement, saveDamageNote, stopReplacementInvite } from "./actions";
 
 type Props = ShowTracker & { owner: boolean; emailReady: boolean };
-type Filter = "all" | TrackStage;
+type Filter = "all" | TrackStage | "damage";
 type View = "pictures" | "list";
 
 const TZ = "America/New_York";
@@ -84,16 +84,17 @@ export function WorksTracker({ show, works, replacements, hasDropoffWindow, owne
   };
 
   const counts = useMemo(() => {
-    const c: Record<Filter, number> = { all: 0, waiting: 0, booked: 0, received: 0, unavailable: 0 };
+    const c: Record<Filter, number> = { all: 0, waiting: 0, booked: 0, received: 0, unavailable: 0, damage: 0 };
     for (const w of works) {
       c[w.stage]++;
+      if (w.damageNote) c.damage++;
       if (w.stage !== "unavailable") c.all++;
     }
     return c;
   }, [works]);
   const needle = q.trim().toLowerCase();
   const shown = works.filter(
-    (w) => (filter === "all" ? w.stage !== "unavailable" : w.stage === filter) && (!needle || w.title.toLowerCase().includes(needle) || w.artist.toLowerCase().includes(needle)),
+    (w) => (filter === "all" ? w.stage !== "unavailable" : filter === "damage" ? !!w.damageNote : w.stage === filter) && (!needle || w.title.toLowerCase().includes(needle) || w.artist.toLowerCase().includes(needle)),
   );
   const artistsShown = new Set(shown.map((w) => w.artistId)).size;
   const open = works.find((w) => w.id === openId) ?? replacements.flatMap((r) => r.candidates).find((w) => w.id === openId) ?? null;
@@ -125,14 +126,14 @@ export function WorksTracker({ show, works, replacements, hasDropoffWindow, owne
       {owner && replacements.length > 0 && <Replacements show={show} replacements={replacements} emailReady={emailReady} onOpen={setOpenId} />}
 
       <div className="sticky top-[57px] z-20 -mx-4 flex flex-wrap items-center gap-2 border-b border-line bg-paper/95 px-4 py-3 backdrop-blur">
-        {(["all", "waiting", "booked", "received", "unavailable"] as Filter[]).map((f) => (
+        {(["all", "waiting", "booked", "received", "unavailable", ...(counts.damage ? ["damage"] : [])] as Filter[]).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
             className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ring-1 ${filter === f ? "bg-ink text-white ring-ink" : "bg-white ring-line hover:bg-paper"}`}
           >
-            {f !== "all" && <StageIcon stage={f} size="sm" />}
-            {f === "all" ? "All works" : STAGE[f].label}
+            {f === "damage" ? <span className="text-rose-700">⚠</span> : f !== "all" && <StageIcon stage={f} size="sm" />}
+            {f === "all" ? "All works" : f === "damage" ? "Damage noted" : STAGE[f].label}
             <span className={`text-xs ${filter === f ? "text-white/70" : "text-muted"}`}>{counts[f]}</span>
           </button>
         ))}
@@ -166,6 +167,11 @@ export function WorksTracker({ show, works, replacements, hasDropoffWindow, owne
                 {w.stage === "booked" && w.booking ? ` · ${fmtDay(w.booking)}` : ""}
               </p>
               {!w.agreementSigned && w.stage !== "unavailable" && <p className="mt-0.5 text-[11px] text-amber-800">Agreement not signed</p>}
+              {w.damageNote && (
+                <p className="mt-0.5 truncate text-[11px] font-medium text-rose-700" title={w.damageNote}>
+                  ⚠ Damage: {w.damageNote}
+                </p>
+              )}
             </button>
           ))}
         </div>
@@ -194,7 +200,7 @@ function ReceivedBox({ w, showId }: { w: TrackedWork; showId: string }) {
 function WorksList({ works, showId, onOpen }: { works: TrackedWork[]; showId: string; onOpen: (id: string) => void }) {
   return (
     <div className="mt-3 overflow-x-auto rounded-lg bg-white ring-1 ring-line">
-      <table className="w-full min-w-[960px] text-sm">
+      <table className="w-full min-w-[1100px] text-sm">
         <thead className="border-b border-line text-left text-xs uppercase tracking-wider text-muted">
           <tr>
             <th className="w-8 p-2" />
@@ -207,6 +213,7 @@ function WorksList({ works, showId, onOpen }: { works: TrackedWork[]; showId: st
             <th className="p-2">Agreement</th>
             <th className="p-2">Drop-off time</th>
             <th className="p-2">Dropped off</th>
+            <th className="p-2">Damage</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
@@ -243,6 +250,19 @@ function WorksList({ works, showId, onOpen }: { works: TrackedWork[]; showId: st
               <td className="whitespace-nowrap p-2 text-xs">{w.booking ? fmtBooking(w.booking) : <span className="text-rose-700">Not booked</span>}</td>
               <td className="p-2">
                 <ReceivedBox w={w} showId={showId} />
+              </td>
+              <td className="max-w-[14rem] p-2 text-xs">
+                {w.damageNote ? (
+                  <button onClick={() => onOpen(w.id)} title={w.damageNote} className="block max-w-full truncate text-left font-medium text-rose-700 hover:underline">
+                    ⚠ {w.damageNote}
+                  </button>
+                ) : w.stage === "unavailable" ? (
+                  "—"
+                ) : (
+                  <button onClick={() => onOpen(w.id)} className="text-muted hover:underline">
+                    Add note
+                  </button>
+                )}
               </td>
             </tr>
           ))}
@@ -323,6 +343,7 @@ function WorkPanel({ w, show, owner, emailReady, onClose }: { w: TrackedWork; sh
               {w.receivedAt ? `Dropped off ${fmtBooking(w.receivedAt)} · click to undo` : "✓ Mark dropped off"}
             </button>
           )}
+          {inShow && <DamageBox w={w} showId={show.id} />}
           {owner && inShow && !unavailable && (
             <button onClick={() => setUnavailable(true)} className="w-full rounded-md bg-white px-4 py-2 text-sm text-rose-800 ring-1 ring-rose-200 hover:bg-rose-50">
               No longer available…
@@ -478,6 +499,61 @@ function UseForm({ work, replacing, show, emailReady, onDone }: { work: TrackedW
         </button>
       </div>
       {error && <p className="mt-2 text-rose-700">{error}</p>}
+    </div>
+  );
+}
+
+/** What was wrong with the work when it came in. Saved on the work for this show; clear the text to remove it. */
+function DamageBox({ w, showId }: { w: TrackedWork; showId: string }) {
+  const { run, pending, error } = useRun();
+  const [open, setOpen] = useState(!!w.damageNote);
+  const [text, setText] = useState(w.damageNote ?? "");
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    setText(w.damageNote ?? "");
+    setOpen(!!w.damageNote);
+  }, [w.id, w.damageNote]);
+  if (!open)
+    return (
+      <button onClick={() => setOpen(true)} className="w-full rounded-md bg-white px-4 py-2 text-sm ring-1 ring-line hover:bg-paper">
+        ⚠ Note damage…
+      </button>
+    );
+  const changed = text.trim() !== (w.damageNote ?? "");
+  return (
+    <div className={`rounded-md p-3 text-sm ring-1 ${w.damageNote ? "bg-rose-50 ring-rose-200" : "bg-white ring-line"}`}>
+      <label className="block font-medium" htmlFor={`damage-${w.id}`}>
+        Damage seen at drop-off
+      </label>
+      <textarea
+        id={`damage-${w.id}`}
+        value={text}
+        onChange={(e) => (setText(e.target.value), setSaved(false))}
+        placeholder="e.g. Scratch on the lower left corner of the frame; hanging wire loose."
+        className="mt-1.5 h-24 w-full rounded-md bg-white px-2 py-1.5 text-sm ring-1 ring-line"
+      />
+      {w.damageNote && w.damageNotedAt && (
+        <p className="mt-1 text-xs text-muted">
+          Noted {fmtBooking(w.damageNotedAt)}
+          {w.damageNotedBy ? ` by ${w.damageNotedBy}` : ""}. Clear the text and save to remove it.
+        </p>
+      )}
+      <div className="mt-2 flex items-center gap-2">
+        {saved && !changed && <span className="text-xs text-emerald-800">Saved</span>}
+        {error && <span className="text-xs text-rose-700">{error}</span>}
+        <button
+          onClick={() => {
+            setText(w.damageNote ?? "");
+            if (!w.damageNote) setOpen(false);
+          }}
+          className="ml-auto rounded-md px-3 py-1.5 ring-1 ring-line"
+        >
+          Cancel
+        </button>
+        <button disabled={pending || !changed} onClick={() => run(() => saveDamageNote(showId, w.id, text), () => setSaved(true))} className="rounded-md bg-ink px-3 py-1.5 text-white disabled:opacity-40">
+          {pending ? "Saving…" : "Save note"}
+        </button>
+      </div>
     </div>
   );
 }
