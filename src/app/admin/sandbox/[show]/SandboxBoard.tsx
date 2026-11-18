@@ -310,6 +310,9 @@ export function SandboxBoard({
               <Link href={`/admin/shows/${show.id}/notify`} title="Welcome emails and drop-off booking for the selected artists" className="rounded-md bg-ink px-3 py-1.5 text-white">
                 Notify artists
               </Link>
+              <Link href={`/admin/shows/${show.id}/works`} title="After finalizing: every work with its drop-off status, as pictures or a list" className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line hover:bg-paper">
+                Works &amp; drop-off
+              </Link>
             </div>
           </div>
 

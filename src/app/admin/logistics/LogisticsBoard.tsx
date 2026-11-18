@@ -280,6 +280,9 @@ function WindowCard({ w, shows, owner }: { w: Win; shows: Data["shows"]; owner: 
           <button disabled={pending} onClick={() => run(() => setBookingWindowOpen(w.id, !w.open))} className={`rounded-full px-3 py-1 ring-1 ${w.open ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : "ring-line"}`}>
             {w.open ? "Open for booking" : "Closed (click to open)"}
           </button>
+          <Link href={`/admin/shows/${w.showId}/works`} className="rounded-md px-3 py-1 ring-1 ring-line">
+            Works with pictures
+          </Link>
           <button onClick={() => setEditing(true)} className="rounded-md px-3 py-1 ring-1 ring-line">
             Change times
           </button>
