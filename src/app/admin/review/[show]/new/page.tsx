@@ -19,10 +19,11 @@ export default async function NewApplicantsPage({ params, searchParams }: { para
   );
   return (
     <NewApplicants
-      show={{ id: board.show.id, name: board.show.name, type: board.show.type, open: board.show.openForSubmissions, deadline: board.show.applicationDeadline }}
+      show={{ id: board.show.id, name: board.show.name, type: board.show.type, open: board.show.openForSubmissions, deadline: board.show.applicationDeadline, released: board.show.decisionsReleased }}
       entries={entries}
       before={before}
       sandboxCount={sandboxIds.length}
+      sandboxIds={sandboxIds}
       initialList={list}
       initialArtist={artist}
     />
