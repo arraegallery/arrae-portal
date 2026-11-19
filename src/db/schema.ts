@@ -162,6 +162,10 @@ export const showWorks = pgTable(
     receivedBy: text("received_by"),
     pickedUpAt: timestamp("picked_up_at", { withTimezone: true }),
     pickedUpBy: text("picked_up_by"),
+    /** Anything wrong with the work when it arrived (scratches, broken frame, missing hardware). Empty = nothing noted. */
+    damageNote: text("damage_note"),
+    damageNotedAt: timestamp("damage_noted_at", { withTimezone: true }),
+    damageNotedBy: text("damage_noted_by"),
   },
   (t) => [primaryKey({ columns: [t.showId, t.workId] })],
 );

@@ -7,7 +7,7 @@ import { ensureApplication, logActivity } from "@/lib/applications";
 import { DIRECT_EMAIL_KIND, directEmailBody } from "@/lib/direct-email";
 import { personalize, renderEmail, renderText, sendEmails } from "@/lib/email";
 import { portalUrl } from "@/lib/notify";
-import { requireOwner } from "@/lib/team";
+import { requireOwner, requireTeam } from "@/lib/team";
 
 /** The most works an artist can be asked to send in place of ones that fell through. */
 const MAX_REPLACEMENTS = 5;
@@ -172,6 +172,24 @@ export async function stopReplacementInvite(showId: string, artistId: string) {
     await db.update(s.applications).set({ extraWorksLeft: 0 }).where(and(eq(s.applications.showId, showId), eq(s.applications.artistId, artistId)));
     await logActivity({ artistId, showId, kind: "status", body: "Stopped the invitation to add replacement works", actor });
     refresh(showId, artistId);
+    return false;
+  });
+}
+
+/** Note any damage seen on a work at drop-off. An empty note clears it. Anyone on the team can do this. */
+export async function saveDamageNote(showId: string, workId: string, note: string) {
+  return asResult(async () => {
+    const actor = (await requireTeam()).email;
+    const text = note.trim().slice(0, 2000);
+    const [row] = await db
+      .update(s.showWorks)
+      .set({ damageNote: text || null, damageNotedAt: text ? new Date() : null, damageNotedBy: text ? actor : null })
+      .where(and(eq(s.showWorks.showId, showId), eq(s.showWorks.workId, workId)))
+      .returning();
+    if (!row) throw new Error("That work isn't part of this show");
+    const [w] = await db.select({ title: s.works.title, artistId: s.works.artistId }).from(s.works).where(eq(s.works.id, workId));
+    await logActivity({ artistId: w?.artistId, workId, showId, kind: "logistics", body: text ? `Damage noted on "${w?.title}": ${text}` : `Damage note cleared on "${w?.title}"`, actor });
+    refresh(showId, w?.artistId);
     return false;
   });
 }
