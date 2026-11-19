@@ -6,6 +6,7 @@ import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage
 import { EmailArtistBox } from "@/components/EmailArtistBox";
 import { DIRECT_EMAIL_KIND } from "@/lib/direct-email";
 import { addNote, setApplicationStatus, setWorkStatus } from "../../../actions";
+import { BulkDecline } from "./BulkDecline";
 import type { BoardEntry, BoardWork } from "@/lib/queries";
 import { STATUS_TONE, artistFacingApplication, artistFacingWork, type ApplicationStatus, type WorkStatus } from "@/lib/status";
 
@@ -32,6 +33,9 @@ const WORK_PICKS: { status: WorkStatus; label: string }[] = [
   { status: "Not included", label: "No" },
 ];
 
+/** Still undecided: not accepted, not waitlisted, not asked for more works, not already declined. */
+const UNDECIDED: readonly ApplicationStatus[] = ["New", "In review", "Shortlist"];
+
 type Before = Record<string, { show: string; status: ApplicationStatus; submittedOn: string | null }[]>;
 
 function fmtDate(d: string | null) {
@@ -45,13 +49,15 @@ export function NewApplicants({
   entries: initial,
   before,
   sandboxCount,
+  sandboxIds,
   initialList,
   initialArtist,
 }: {
-  show: { id: string; name: string; type: string; open: boolean; deadline: string | null };
+  show: { id: string; name: string; type: string; open: boolean; deadline: string | null; released: boolean };
   entries: BoardEntry[];
   before: Before;
   sandboxCount: number;
+  sandboxIds: string[];
   initialList?: string;
   initialArtist?: string;
 }) {
@@ -65,6 +71,28 @@ export function NewApplicants({
   const [query, setQuery] = useState("");
   const [, startTransition] = useTransition();
   const detailRef = useRef<HTMLDivElement>(null);
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const inSandboxSet = useMemo(() => new Set(sandboxIds), [sandboxIds]);
+  const inSandbox = (e: BoardEntry) => e.works.some((w) => inSandboxSet.has(w.id));
+  // "Not in the show": nothing in the sandbox (the show's single source of truth), not on the
+  // waitlist, and still undecided. Accepted, waitlisted and asked-for-more applicants are left alone.
+  const notInShow = (e: BoardEntry) => !inSandbox(e) && !e.onWaitlist && UNDECIDED.includes(e.application!.status);
+  const warn = (e: BoardEntry) => {
+    const s = e.application!.status;
+    if (inSandbox(e)) return "has works in the sandbox for this show";
+    if (s === "Selected") return "is accepted";
+    if (e.onWaitlist || s === "Waitlist") return "is on the waitlist";
+    if (s === "Request other works") return "was asked for other works";
+    return null;
+  };
+  const toggleTick = (id: string) =>
+    setTicked((p) => {
+      const n = new Set(p);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
 
   const count = (key: ListKey) => (key === "all" ? entries.length : entries.filter((e) => listOf(e.application!.status)?.key === key).length);
   const inList = useMemo(
@@ -92,6 +120,8 @@ export function NewApplicants({
   }, [inList, openId, entries]);
 
   const current = entries.find((e) => e.artist.id === openId) ?? null;
+  const chosen = entries.filter((e) => ticked.has(e.artist.id));
+  const notInShowAll = entries.filter(notInShow);
   const viewingWork = current?.works.find((w) => w.id === viewing) ?? null;
 
   function pickList(key: ListKey) {
@@ -192,6 +222,39 @@ export function NewApplicants({
             placeholder="Find an applicant by name"
             className="mb-3 w-full rounded-md bg-white px-3 py-2 text-sm ring-1 ring-line"
           />
+          <div className="mb-3 rounded-lg bg-paper p-3 text-sm ring-1 ring-line">
+            <p className="text-xs uppercase tracking-wider text-muted">Decline or email several at once</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <button
+                onClick={() => {
+                  pickList("all");
+                  setTicked(new Set(notInShowAll.map((e) => e.artist.id)));
+                }}
+                disabled={!notInShowAll.length}
+                title="Nothing in the sandbox, not accepted, not on the waitlist, not asked for other works, not already declined"
+                className="rounded-full bg-white px-3 py-1 ring-1 ring-line hover:ring-ink/50 disabled:opacity-40"
+              >
+                Tick everyone not in the show ({notInShowAll.length})
+              </button>
+              <button
+                onClick={() => setTicked(new Set(inList.map((e) => e.artist.id)))}
+                disabled={!inList.length}
+                className="rounded-full bg-white px-3 py-1 ring-1 ring-line hover:ring-ink/50 disabled:opacity-40"
+              >
+                Tick all in this list ({inList.length})
+              </button>
+              {ticked.size > 0 && (
+                <button onClick={() => setTicked(new Set())} className="rounded-full px-3 py-1 text-muted underline">
+                  Untick all
+                </button>
+              )}
+            </div>
+            {ticked.size > 0 && (
+              <button onClick={() => setBulkOpen(true)} className="mt-3 w-full rounded-md bg-ink px-4 py-2 text-white">
+                Decline / email {ticked.size} ticked…
+              </button>
+            )}
+          </div>
           {inList.length === 0 ? (
             <p className="rounded-lg bg-white p-6 text-center text-sm text-muted ring-1 ring-line">
               {list === "review" ? "Everyone has been sorted. Nice work." : "Nobody in this list yet."}
@@ -201,8 +264,16 @@ export function NewApplicants({
               {inList.map((e) => {
                 const l = listOf(e.application!.status);
                 const active = e.artist.id === openId;
+                const emailed = e.notes.some((n) => n.kind === DIRECT_EMAIL_KIND);
                 return (
-                  <li key={e.artist.id}>
+                  <li key={e.artist.id} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={ticked.has(e.artist.id)}
+                      onChange={() => toggleTick(e.artist.id)}
+                      aria-label={`Tick ${e.artist.name}`}
+                      className="h-5 w-5 shrink-0 cursor-pointer accent-ink"
+                    />
                     <button
                       onClick={() => {
                         setOpenId(e.artist.id);
@@ -226,6 +297,8 @@ export function NewApplicants({
                         </p>
                         {list === "all" && l && <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] ring-1 ${l.tone}`}>{l.label}</span>}
                         {before[e.artist.id]?.length ? <span className="ml-1 mt-1 inline-block text-[11px] text-muted">Applied before</span> : null}
+                        {inSandbox(e) ? <span className="ml-1 mt-1 inline-block text-[11px] text-emerald-800">In the sandbox</span> : null}
+                        {emailed ? <span className="ml-1 mt-1 inline-block text-[11px] text-muted">✉ Emailed</span> : null}
                       </div>
                     </button>
                   </li>
@@ -264,6 +337,16 @@ export function NewApplicants({
           )}
         </div>
       </div>
+
+      {bulkOpen && chosen.length > 0 && (
+        <BulkDecline
+          show={{ id: show.id, name: show.name, released: show.released }}
+          chosen={chosen}
+          warn={warn}
+          onClose={() => setBulkOpen(false)}
+          onDone={(ids) => setTicked((p) => new Set([...p].filter((id) => !ids.includes(id))))}
+        />
+      )}
 
       {current && viewingWork && (
         <LargeWork
