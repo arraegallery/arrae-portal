@@ -2,6 +2,8 @@
 
 import { and, asc, eq, gt, inArray, isNull, lt, desc, like, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { fillArraeBios } from "@/lib/arrae-bio-auto";
 import { db, schema as s } from "@/db";
 import { requireOwner, requireTeam } from "@/lib/team";
 import { APPLICATION_STATUSES, WORK_STATUSES, type ApplicationStatus, type WorkStatus } from "@/lib/status";
@@ -52,6 +54,8 @@ export async function setApplicationStatus(applicationId: string, status: Applic
   if (status === "Waitlist") await addToWaitlist(app.artistId, app.showId);
   else if (status === "Selected" || status === "Not selected" || status === "Withdrawn") await removeFromWaitlist(app.artistId);
   await log({ artistId: app.artistId, showId: app.showId, kind: "status", body: `Application set to ${status}`, actor });
+  // Accepted: write their ARRAE bio from their own bio, after this answer has gone back.
+  if (status === "Selected") after(() => fillArraeBios([app.artistId]));
   revalidatePath("/admin", "layout");
 }
 
@@ -311,6 +315,8 @@ export async function finalizeSandbox(showId: string) {
     dropped.length ? `${dropped.length} work${dropped.length === 1 ? "" : "s"} outside the sandbox marked Not included` : "",
   ].filter(Boolean);
   await log({ showId, kind: "show", body: `Finalized from the sandbox: ${ids.length} works selected${extra.length ? `; ${extra.join("; ")}` : ""}`, actor });
+  // Everyone in the show is accepted: write the ARRAE bios still missing, after this answer has gone back.
+  after(() => fillArraeBios(inSandbox));
   revalidatePath("/admin", "layout");
   return ids.length;
 }
@@ -823,4 +829,14 @@ export async function nudgeApplicants(emails: string[]) {
       .where(inArray(s.applicantSignups.email, ok));
   revalidatePath("/admin/applications");
   return { sent: ok.length, skipped: wanted.length - ok.length };
+}
+
+/** "Write ARRAE bio" on the artist page: Claude writes it now from the artist's own bio (only fills an empty one). */
+export async function writeArraeBioNow(artistId: string) {
+  const actor = await requireOwner();
+  const written = await fillArraeBios([artistId], actor);
+  const [a] = await db.select({ arraeBio: s.artists.arraeBio }).from(s.artists).where(eq(s.artists.id, artistId));
+  if (!written && !a?.arraeBio?.trim()) throw new Error("Claude couldn't write the bio this time. Try again in a minute, or use Copy bio prompt.");
+  revalidatePath(`/admin/artists/${artistId}`);
+  return a?.arraeBio ?? "";
 }

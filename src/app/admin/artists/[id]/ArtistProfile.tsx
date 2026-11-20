@@ -18,6 +18,7 @@ import {
   setOnboardingStep,
   updateArtist,
   updateWork,
+  writeArraeBioNow,
 } from "../../actions";
 import { AgreementPanel, type AgreementSummary } from "../../agreements/AgreementPanel";
 import { DocumentCenter } from "@/components/DocumentCenter";
@@ -50,7 +51,7 @@ type Change = Profile["changes"][number];
 const ASK_NOTE = "Thank you for applying! Could you send us better photos of this work? Straight on, in good natural light, filling the frame, with no glare or background. A detail shot is welcome too.";
 type ShowOption = Profile["shows"][number];
 
-export function ArtistProfile({ profile, owner, agreement, documents }: { profile: Profile; owner: boolean; agreement: AgreementSummary; documents: DocRow[] | null }) {
+export function ArtistProfile({ profile, owner, agreement, documents, bioWriter = false }: { profile: Profile; owner: boolean; agreement: AgreementSummary; documents: DocRow[] | null; bioWriter?: boolean }) {
   const a = profile.artist;
   const initial = {
     name: a.name,
@@ -153,6 +154,17 @@ export function ArtistProfile({ profile, owner, agreement, documents }: { profil
               <span className="text-xs font-medium uppercase tracking-wider text-ink">ARRAE bio, for the Shopify collection</span>
               <span className="flex items-baseline gap-3 text-xs text-muted">
                 {owner && form.bio.trim() && <CopyBioPrompt name={form.name} ownBio={form.bio} />}
+                {bioWriter && form.bio.trim() && !form.arraeBio.trim() && !saved.arraeBio.trim() && (
+                  <WriteBioButton
+                    artistId={a.id}
+                    onDone={(bio) => {
+                      setForm((f) => ({ ...f, arraeBio: bio }));
+                      setSaved((v) => ({ ...v, arraeBio: bio }));
+                      setStatus("ARRAE bio written by Claude and saved. Please read it over.");
+                    }}
+                    onError={setStatus}
+                  />
+                )}
                 {form.arraeBio.trim() ? `${form.arraeBio.trim().split(/\s+/).length} words` : "Not written yet"}
               </span>
             </span>
@@ -815,6 +827,31 @@ function CopyBioPrompt({ name, ownBio }: { name: string; ownBio: string }) {
       className="rounded-md bg-white px-2 py-0.5 text-ink ring-1 ring-line hover:ring-ink"
     >
       {copied ? "Copied" : "Copy bio prompt"}
+    </button>
+  );
+}
+
+/** Claude writes the ARRAE bio now from the artist's own bio (only when it's empty). */
+function WriteBioButton({ artistId, onDone, onError }: { artistId: string; onDone: (bio: string) => void; onError: (m: string) => void }) {
+  const [busy, start] = useTransition();
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={(e) => {
+        e.preventDefault();
+        start(async () => {
+          try {
+            onDone(await writeArraeBioNow(artistId));
+          } catch (err) {
+            onError((err as Error).message);
+          }
+        });
+      }}
+      title="Claude writes the ARRAE bio from the artist's own bio, using the ARRAE bio prompt, and saves it"
+      className="rounded-md bg-ink px-2 py-0.5 text-white disabled:opacity-50"
+    >
+      {busy ? "Writing…" : "Write with Claude"}
     </button>
   );
 }

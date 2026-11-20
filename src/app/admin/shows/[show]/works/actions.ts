@@ -8,6 +8,8 @@ import { DIRECT_EMAIL_KIND, directEmailBody } from "@/lib/direct-email";
 import { personalize, renderEmail, renderText, sendEmails } from "@/lib/email";
 import { portalUrl } from "@/lib/notify";
 import { requireOwner, requireTeam } from "@/lib/team";
+import { after } from "next/server";
+import { fillArraeBios } from "@/lib/arrae-bio-auto";
 
 /** The most works an artist can be asked to send in place of ones that fell through. */
 const MAX_REPLACEMENTS = 5;
@@ -141,6 +143,7 @@ export async function pickReplacement(showId: string, workId: string, tell: { su
         .set({ extraWorksLeft: sql`greatest(${s.applications.extraWorksLeft} - 1, 0)` })
         .where(and(eq(s.applications.showId, showId), eq(s.applications.artistId, artistId)));
       await db.update(s.applications).set({ status: "Selected" }).where(and(eq(s.applications.showId, showId), eq(s.applications.artistId, artistId), inArray(s.applications.status, ["New", "In review", "Shortlist", "Request other works"])));
+      after(() => fillArraeBios([artistId]));
     }
     await logActivity({ artistId, workId, showId, kind: "status", body: `"${row.work.title}" selected as a replacement (added to the sandbox)`, actor });
     refresh(showId, artistId);
