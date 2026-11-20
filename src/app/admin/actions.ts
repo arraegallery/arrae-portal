@@ -16,6 +16,7 @@ import { DIRECT_EMAIL_KIND, MORE_WORKS, directEmailBody } from "@/lib/direct-ema
 import { personalize, renderEmail, renderText, sendEmails, type EmailContent } from "@/lib/email";
 import { oneClickUrl, optedOut, unsubscribeUrl } from "@/lib/unsubscribe";
 import { finalizeConflicts, type FinalizeWork } from "@/lib/finalize";
+import { createInvite, inviteUrl, setInviteOff } from "@/lib/apply-invites";
 import { signedImageUrls } from "@/lib/images";
 import { WALLS_KEY, layoutKey, parseLayout, parseWallSetup, remapLayout, type WallLayout, type WallSetup } from "@/lib/walls";
 
@@ -650,6 +651,24 @@ export async function markArtistMessagesRead(artistId: string) {
 }
 
 // ---- Shows ----
+
+/** A private link that lets someone apply to a show after its open call has closed. */
+export async function createApplyInvite(showId: string, label: string) {
+  const actor = await requireOwner();
+  const [show] = await db.select({ id: s.shows.id, name: s.shows.name }).from(s.shows).where(eq(s.shows.id, showId));
+  if (!show) throw new Error("That show doesn't exist");
+  const invite = await createInvite(show.id, label, actor);
+  await log({ showId: show.id, kind: "show", body: `Invite link made for late applications${invite.label ? ` (${invite.label})` : ""}`, actor });
+  revalidatePath("/admin/shows");
+  return { ...invite, url: inviteUrl(invite.token) };
+}
+
+export async function setApplyInviteOff(token: string, off: boolean) {
+  const actor = await requireOwner();
+  const invite = await setInviteOff(token, off);
+  await log({ showId: invite.showId, kind: "show", body: `Invite link ${off ? "turned off" : "turned back on"}${invite.label ? ` (${invite.label})` : ""}`, actor });
+  revalidatePath("/admin/shows");
+}
 
 type ShowFields = {
   name?: string;

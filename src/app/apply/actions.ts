@@ -15,6 +15,7 @@ import { getTerms } from "@/lib/terms";
 import { sendSignInLink } from "@/lib/sign-in-link";
 import { parseAmount } from "@/lib/amount";
 import { asResult } from "@/lib/action-result";
+import { inviteForEmail, inviteUsed, liveInvite, rememberInvite } from "@/lib/apply-invites";
 
 const rand = () => crypto.randomUUID().replace(/-/g, "").slice(0, 14);
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -22,8 +23,11 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** Step 1: an email address. We save it (so ARRAE can follow up) and send a link to continue. */
 export async function startApplication(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  if (!EMAIL.test(email)) redirect("/apply?error=email");
-  if (!supabaseConfigured) redirect("/apply?error=setup");
+  const invited = await liveInvite(String(formData.get("invite") ?? ""));
+  const keep = invited ? `&invite=${invited.invite.token}` : "";
+  if (!EMAIL.test(email)) redirect(`/apply?error=email${keep}`);
+  if (!supabaseConfigured) redirect(`/apply?error=setup${keep}`);
+  if (invited) await rememberInvite(email, invited.invite.token);
   const [existing] = await db.select().from(s.applicantSignups).where(eq(s.applicantSignups.email, email));
   const recent = existing?.lastLinkAt && Date.now() - existing.lastLinkAt.getTime() < 60_000;
   await db
@@ -40,9 +44,9 @@ export async function startApplication(formData: FormData) {
       console.error("apply sign-in link failed", e);
       failed = true;
     }
-    if (failed) redirect(`/apply?error=send`);
+    if (failed) redirect(`/apply?error=send${keep}`);
   }
-  redirect(`/apply?sent=1`);
+  redirect(`/apply?sent=1${keep}`);
 }
 
 async function mySignup() {
@@ -141,7 +145,9 @@ async function saveApplication(input: ApplicationInput) {
   const [draftId, idList = ""] = (signup.draftId ?? "").split(":");
   const allowedWorks = idList.split(",").filter(Boolean);
   const [show] = await db.select().from(s.shows).where(eq(s.shows.id, input.showId));
-  if (!show || !show.openForSubmissions) throw new Error("Choose a show that's taking applications");
+  const invited = await inviteForEmail(email);
+  const viaInvite = !!show && !show.openForSubmissions && invited?.show.id === show.id;
+  if (!show || (!show.openForSubmissions && !viaInvite)) throw new Error("Choose a show that's taking applications");
 
   const name = clean(input.name, 200);
   const phone = clean(input.phone, 60);
@@ -237,7 +243,9 @@ async function saveApplication(input: ApplicationInput) {
   }
   await ensureApplication(artistId!, show.id);
   await db.update(s.applicantSignups).set({ submittedAt: new Date(), showId: show.id, artistId, draftId: null, formDraft: null }).where(eq(s.applicantSignups.email, email));
-  await logActivity({ artistId, showId: show.id, kind: "submission", body: `Applied to ${show.name} with ${works.length} work${works.length === 1 ? "" : "s"}`, actor: email });
+  if (invited?.show.id === show.id) await inviteUsed(email, invited.invite.token);
+  const via = viaInvite ? ` (late, through an invite link${invited?.invite.label ? `: ${invited.invite.label}` : ""})` : "";
+  await logActivity({ artistId, showId: show.id, kind: "submission", body: `Applied to ${show.name} with ${works.length} work${works.length === 1 ? "" : "s"}${via}`, actor: email });
 
   const first = name.split(/\s+/)[0];
   await notifyEmail([email], {
@@ -250,7 +258,7 @@ async function saveApplication(input: ApplicationInput) {
   await notifyEmail(arraeRecipients(), {
     subject: `New application for ${show.name}: ${name}`,
     heading: `${name} applied to ${show.name}`,
-    body: `${name} (${email}) applied with ${works.length} work${works.length === 1 ? "" : "s"}: ${works.map((w) => w.title).join(", ")}.${existing ? "\n\nThey were already on file, so their details were updated." : ""}`,
+    body: `${name} (${email}) applied${via} with ${works.length} work${works.length === 1 ? "" : "s"}: ${works.map((w) => w.title).join(", ")}.${existing ? "\n\nThey were already on file, so their details were updated." : ""}`,
     buttonLabel: "Open the review board",
     buttonUrl: portalUrl(`/admin/review/${show.id}`),
   });

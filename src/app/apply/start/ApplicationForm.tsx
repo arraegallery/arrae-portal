@@ -21,11 +21,11 @@ type Prefill = { name: string; phone: string; bio: string; social: string; websi
 type SavedDraft = { showId?: string; f?: Partial<Prefill>; works?: Partial<Omit<WorkDraft, "files">>[] };
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
-export function ApplicationForm({ shows, prefill, draft }: { shows: Show[]; prefill: Prefill; draft: Record<string, unknown> | null }) {
+export function ApplicationForm({ shows, prefill, draft, invitedShowId }: { shows: Show[]; prefill: Prefill; draft: Record<string, unknown> | null; invitedShowId?: string }) {
   const router = useRouter();
   const saved = (draft ?? {}) as SavedDraft;
   const restored = !!draft && (Object.values(saved.f ?? {}).some((v) => str(v).trim()) || (saved.works ?? []).some((w) => str(w.title).trim()));
-  const [showId, setShowId] = useState(saved.showId && shows.some((x) => x.id === saved.showId) ? saved.showId : shows.length === 1 ? shows[0].id : "");
+  const [showId, setShowId] = useState(saved.showId && shows.some((x) => x.id === saved.showId) ? saved.showId : invitedShowId && shows.some((x) => x.id === invitedShowId) ? invitedShowId : shows.length === 1 ? shows[0].id : "");
   const [f, setF] = useState<Prefill>(() => {
     const out = { ...prefill };
     for (const k of Object.keys(out) as (keyof Prefill)[]) if (str(saved.f?.[k]).trim()) out[k] = str(saved.f?.[k]);

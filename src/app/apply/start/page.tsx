@@ -7,11 +7,15 @@ import { getTerms } from "@/lib/terms";
 import { Prose } from "@/components/Prose";
 import { agreeToTerms } from "../actions";
 import { ApplicationForm } from "./ApplicationForm";
+import { inviteForEmail, liveInvite, rememberInvite } from "@/lib/apply-invites";
 
-export default async function StartPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function StartPage({ searchParams }: { searchParams: Promise<{ error?: string; invite?: string }> }) {
+  const { error, invite: token } = await searchParams;
   const email = await signedInEmail();
-  if (!email) redirect("/apply");
-  const { error } = await searchParams;
+  if (!email) redirect(token ? `/apply?invite=${encodeURIComponent(token)}` : "/apply");
+  // Arriving from an invite link while already signed in: remember it for this email.
+  const fromLink = token ? await liveInvite(token) : null;
+  if (fromLink) await rememberInvite(email, fromLink.invite.token);
   const terms = await getTerms();
   let [signup] = await db.select().from(s.applicantSignups).where(eq(s.applicantSignups.email, email));
   if (!signup) [signup] = await db.insert(s.applicantSignups).values({ email }).onConflictDoNothing().returning();
@@ -46,11 +50,14 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
       </main>
     );
 
-  const shows = await db
+  const openShows = await db
     .select({ id: s.shows.id, name: s.shows.name, description: s.shows.description, deadline: s.shows.applicationDeadline })
     .from(s.shows)
     .where(eq(s.shows.openForSubmissions, true))
     .orderBy(asc(s.shows.name));
+  // An invite link adds its show even though the open call has closed.
+  const invited = await inviteForEmail(email);
+  const shows = invited && !openShows.some((x) => x.id === invited.show.id) ? [{ ...invited.show, deadline: null }, ...openShows] : openShows;
   const existing = (await artistsForEmail(email))[0];
   if (!shows.length)
     return (
@@ -63,6 +70,9 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
     <main className="mx-auto max-w-3xl px-4 pb-10 pt-20">
       <p className="text-xs uppercase tracking-[0.2em] text-muted">Step 3 of 3</p>
       <h1 className="font-display text-4xl">Your application</h1>
+      {invited && (
+        <p className="mt-2 rounded-md bg-amber-50 p-3 text-sm text-amber-950 ring-1 ring-amber-200">You&rsquo;re invited to apply to {invited.show.name}, even though the open call has closed.</p>
+      )}
       <p className="mt-1 text-sm text-muted">
         Applying as {email}.{" "}
         {existing && (
@@ -86,6 +96,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
           education: existing?.education ?? "",
         }}
         draft={signup?.formDraft ?? null}
+        invitedShowId={invited?.show.id}
       />
     </main>
   );
