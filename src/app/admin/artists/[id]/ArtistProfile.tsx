@@ -30,6 +30,7 @@ import { TRACKED_FIELDS } from "@/lib/change-fields";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { getArtistProfile } from "@/lib/queries";
 import { STATUS_TONE } from "@/lib/status";
+import { arraeBioRequest } from "@/lib/arrae-bio-prompt";
 
 type Profile = NonNullable<Awaited<ReturnType<typeof getArtistProfile>>>;
 type Work = Profile["works"][number];
@@ -150,7 +151,10 @@ export function ArtistProfile({ profile, owner, agreement, documents }: { profil
           <label className="block text-sm">
             <span className="flex items-baseline justify-between">
               <span className="text-xs font-medium uppercase tracking-wider text-ink">ARRAE bio, for the Shopify collection</span>
-              <span className="text-xs text-muted">{form.arraeBio.trim() ? `${form.arraeBio.trim().split(/\s+/).length} words` : "Not written yet"}</span>
+              <span className="flex items-baseline gap-3 text-xs text-muted">
+                {owner && form.bio.trim() && <CopyBioPrompt name={form.name} ownBio={form.bio} />}
+                {form.arraeBio.trim() ? `${form.arraeBio.trim().split(/\s+/).length} words` : "Not written yet"}
+              </span>
             </span>
             <textarea
               value={form.arraeBio}
@@ -792,5 +796,25 @@ function ArtistNotes({ artistId, notes: initial, works }: { artistId: string; no
         </details>
       )}
     </section>
+  );
+}
+
+/** Copies the ARRAE bio prompt with this artist's own bio, to paste into Claude. */
+function CopyBioPrompt({ name, ownBio }: { name: string; ownBio: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async (e) => {
+        e.preventDefault();
+        await navigator.clipboard.writeText(arraeBioRequest(name, ownBio));
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      }}
+      title="Copies the ARRAE bio prompt together with the artist's own bio. Paste it into Claude, then paste the answer into this box."
+      className="rounded-md bg-white px-2 py-0.5 text-ink ring-1 ring-line hover:ring-ink"
+    >
+      {copied ? "Copied" : "Copy bio prompt"}
+    </button>
   );
 }
