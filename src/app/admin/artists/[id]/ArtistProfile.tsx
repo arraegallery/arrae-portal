@@ -113,6 +113,13 @@ export function ArtistProfile({ profile, owner, agreement, documents }: { profil
           <h1 className="font-display text-4xl">{saved.name}</h1>
           {!owner && <span className="rounded-full bg-white px-2 py-0.5 text-xs text-muted ring-1 ring-line">View only</span>}
           {profile.onWaitlist && <span className={`rounded-full px-2 py-0.5 text-xs ring-1 ${STATUS_TONE.Waitlist}`}>On waitlist</span>}
+          <Link
+            href={`/admin/artists/${encodeURIComponent(a.id)}/sheet`}
+            className="ml-auto rounded-md bg-white px-3 py-1.5 text-sm ring-1 ring-line hover:ring-ink"
+            title="A one-page profile with headshot, bio and works, to print or save as PDF"
+          >
+            Print profile
+          </Link>
         </div>
         <div className="mt-2 flex flex-wrap gap-2 text-xs">
           {profile.applications.map((ap) => (
