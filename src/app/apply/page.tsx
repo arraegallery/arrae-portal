@@ -2,6 +2,7 @@ import Link from "next/link";
 import { asc, eq } from "drizzle-orm";
 import { db, schema as s } from "@/db";
 import { signedInEmail } from "@/lib/artist-auth";
+import { liveInvite } from "@/lib/apply-invites";
 import { startApplication } from "./actions";
 
 const ERRORS: Record<string, string> = {
@@ -10,8 +11,9 @@ const ERRORS: Record<string, string> = {
   setup: "Applications aren't set up yet. Please write to hello@arraegallery.com.",
 };
 
-export default async function ApplyPage({ searchParams }: { searchParams: Promise<{ sent?: string; error?: string }> }) {
-  const { sent, error } = await searchParams;
+export default async function ApplyPage({ searchParams }: { searchParams: Promise<{ sent?: string; error?: string; invite?: string }> }) {
+  const { sent, error, invite: token } = await searchParams;
+  const invited = token ? await liveInvite(token) : null;
   const email = await signedInEmail();
   const open = await db.select({ id: s.shows.id, name: s.shows.name, deadline: s.shows.applicationDeadline }).from(s.shows).where(eq(s.shows.openForSubmissions, true)).orderBy(asc(s.shows.name));
   return (
@@ -23,7 +25,15 @@ export default async function ApplyPage({ searchParams }: { searchParams: Promis
         apply with up to 3 works.
       </p>
       <p className="mt-3 inline-block rounded-full bg-emerald-50 px-3 py-1 text-sm text-emerald-900 ring-1 ring-emerald-200">There is no application fee. It&rsquo;s free to apply.</p>
-      {open.length > 0 ? (
+      {invited ? (
+        <div className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-950 ring-1 ring-amber-200">
+          <p className="font-medium">You&rsquo;re invited to apply to {invited.show.name}.</p>
+          <p className="mt-1">The open call has closed, but this private link lets you send your application.</p>
+        </div>
+      ) : token ? (
+        <p className="mt-3 rounded-md bg-white p-3 text-sm ring-1 ring-line">This invite link isn&rsquo;t active any more. Please write to hello@arraegallery.com if you&rsquo;d still like to apply.</p>
+      ) : null}
+      {invited ? null : open.length > 0 ? (
         <p className="mt-3 text-sm">
           Now taking applications for <strong>{open.map((x) => x.name).join(", ")}</strong>.
         </p>
@@ -48,7 +58,7 @@ export default async function ApplyPage({ searchParams }: { searchParams: Promis
           <p className="text-sm">
             You&rsquo;re signed in as <strong>{email}</strong>.
           </p>
-          <Link href="/apply/start" className="mt-3 inline-block rounded-md bg-ink px-4 py-2 text-sm text-white">
+          <Link href={invited ? `/apply/start?invite=${invited.invite.token}` : "/apply/start"} className="mt-3 inline-block rounded-md bg-ink px-4 py-2 text-sm text-white">
             Continue my application →
           </Link>
         </div>
@@ -56,12 +66,13 @@ export default async function ApplyPage({ searchParams }: { searchParams: Promis
         <div className="mt-8 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-900 ring-1 ring-emerald-200">
           <p className="font-medium">Check your email.</p>
           <p className="mt-1">We sent you a link to continue your application. It can take a minute to arrive; check your spam folder if you don&rsquo;t see it.</p>
-          <Link href="/apply" className="mt-2 inline-block underline">
+          <Link href={invited ? `/apply?invite=${invited.invite.token}` : "/apply"} className="mt-2 inline-block underline">
             Use a different email
           </Link>
         </div>
       ) : (
         <form action={startApplication} className="mt-8 rounded-lg bg-white p-4 ring-1 ring-line">
+          {invited && <input type="hidden" name="invite" value={invited.invite.token} />}
           <label className="block text-sm font-medium">
             Your email
             <input name="email" type="email" required autoComplete="email" placeholder="you@example.com" className="mt-1 w-full rounded-md bg-white px-3 py-2 text-sm font-normal ring-1 ring-line" />
