@@ -25,3 +25,22 @@ select {
   background-size: 12px;
   padding-right: 2rem !important;
 }
+
+/* Printing: the one-page artist profile is exactly one letter page, edge to edge. */
+@media print {
+  @page {
+    size: letter;
+    margin: 0;
+  }
+  html,
+  body {
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .sheet {
+    height: 10.98in !important;
+    break-after: avoid;
+    break-inside: avoid;
+  }
+}

@@ -17,7 +17,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="min-h-screen">
       <ImageRefresher />
-      <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur print:hidden">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <Link href="/admin" aria-label="ARRAE home" className="shrink-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
