@@ -16,12 +16,14 @@ export const MODULES = [
   { id: "dates", label: "Shows & deadlines", href: "/admin/s" },
 ] as const;
 export type ModuleId = (typeof MODULES)[number]["id"];
-export const DEFAULT_LAYOUT: (ModuleId | null)[] = ["messages", "team", "gallery", "activity", null, null];
+/** Messages and the two calendars first (Anai, Nov 26); show cards live on the Shows page. */
+export const DEFAULT_LAYOUT: (ModuleId | null)[] = ["messages", "gallery", "team", "submissions", "dates", "activity"];
 
 /** One entry on a dashboard calendar: a day (or a run of days) with a colored dot. */
 export type DashItem = { date: string; end?: string; title: string; sub?: string; dot: string; href?: string };
 
-const layoutKey = (email: string) => `dashboard:${email.toLowerCase()}`;
+// v2 (Nov 26): everyone starts again from the new default once; Customize still saves per person.
+const layoutKey = (email: string) => `dashboard-v2:${email.toLowerCase()}`;
 
 export async function getLayout(email: string): Promise<(ModuleId | null)[]> {
   const [row] = await db.select().from(s.appSettings).where(eq(s.appSettings.key, layoutKey(email)));
