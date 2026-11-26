@@ -29,7 +29,7 @@ function summary(r: Row) {
   }
 }
 
-export function ShowsList({ shows }: { shows: Row[] }) {
+export function ShowsList({ shows, now }: { shows: Row[]; /** Cards for the shows in motion, each with what needs doing (moved here from Home). */ now?: React.ReactNode }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [type, setType] = useState<"Volume" | "Takeover">("Volume");
@@ -74,6 +74,8 @@ export function ShowsList({ shows }: { shows: Row[] }) {
           {error && <span className="w-full text-rose-700">{error}</span>}
         </form>
       </section>
+      {now}
+      <h2 className="mb-2 text-xs uppercase tracking-[0.2em] text-muted">All shows</h2>
       <ul className="grid gap-3">
         {current.map((r) => (
           <ShowRow key={r.id} r={r} />

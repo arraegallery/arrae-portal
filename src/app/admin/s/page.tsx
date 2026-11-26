@@ -1,6 +1,7 @@
 import { getAllShowOverviews } from "@/lib/show-stage";
 import { requireOwner } from "@/lib/team";
 import { ShowsList } from "./ShowsList";
+import { ShowsNow } from "../ShowsNow";
 
 /** Every show, each opening its one page on the step it's on now. */
 export default async function ShowsHome() {
@@ -17,5 +18,5 @@ export default async function ShowsHome() {
     current,
     past,
   }));
-  return <ShowsList shows={rows} />;
+  return <ShowsList shows={rows} now={<ShowsNow />} />;
 }
