@@ -26,26 +26,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <nav className="flex flex-wrap items-center gap-1 text-sm">
             {owner ? (
               <>
-                <NavMenu
-                  label="Shows"
-                  items={[
-                    { href: "/admin/sandbox", label: "Curate", hint: "Sandbox" },
-                    { href: "/admin/review", label: "Reviews", hint: "Volumes" },
-                    { href: "/admin/takeovers", label: "Takeovers" },
-                    { href: "/admin/shows", label: "Show settings", divider: true },
-                  ]}
-                />
-                <NavTop href="/admin/new" badge={fresh} tone="red">
-                  New
+                <NavTop href="/admin" badge={fresh} tone="red">
+                  Home
                 </NavTop>
+                <NavTop href="/admin/s">Shows</NavTop>
                 <NavMenu
                   label="Artists"
                   items={[
                     { href: "/admin/artists", label: "All artists" },
-                    { href: "/admin/applications", label: "Applications", hint: "apply page & reminders" },
                     { href: "/admin/waitlist", label: "Waitlist" },
-                    { href: "/admin/agreements", label: "Agreements" },
-                    { href: "/admin/documents", label: "Documents" },
+                    { href: "/admin/new", label: "New submissions", hint: "since you last looked", badge: fresh },
                   ]}
                 />
                 <NavMenu
@@ -62,7 +52,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                     { href: "/admin/calendar", label: "Calendar", hint: "shows & events" },
                     { href: "/admin/schedule", label: "Team schedule", hint: "Gallery Assistant shifts" },
                     { href: "/admin/schedule/hours", label: "Hours report" },
-                    { href: "/admin/logistics", label: "Logistics", hint: "drop-off & pick-up" },
+                    { href: "/admin/logistics", label: "Check-in", hint: "drop-off & pick-up times" },
+                  ]}
+                />
+                <NavMenu
+                  label="Settings"
+                  items={[
+                    { href: "/admin/applications", label: "Apply page", hint: "terms & reminders" },
+                    { href: "/admin/agreements", label: "Agreements", hint: "template & signing" },
+                    { href: "/admin/documents", label: "Documents" },
                     { href: "/admin/shopify", label: "Shopify" },
                     { href: "/admin/team", label: "Team", divider: true },
                   ]}

@@ -8,7 +8,7 @@ import type { ShowTracker, TrackedWork, TrackStage } from "@/lib/show-tracker";
 import { markWorks } from "../../../logistics/actions";
 import { markAvailableAgain, markUnavailable, passOnWork, pickReplacement, saveDamageNote, stopReplacementInvite } from "./actions";
 
-type Props = ShowTracker & { owner: boolean; emailReady: boolean };
+type Props = ShowTracker & { owner: boolean; emailReady: boolean; /** Inside the one-page show view, which has its own title. */ embedded?: boolean };
 type Filter = "all" | TrackStage | "damage";
 type View = "pictures" | "list";
 
@@ -70,7 +70,7 @@ function readPref<T extends string>(key: string, allowed: T[], fallback: T): T {
   }
 }
 
-export function WorksTracker({ show, works, replacements, hasDropoffWindow, owner, emailReady }: Props) {
+export function WorksTracker({ show, works, replacements, hasDropoffWindow, owner, emailReady, embedded }: Props) {
   const [view, setView] = useState<View>("pictures");
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
@@ -101,6 +101,12 @@ export function WorksTracker({ show, works, replacements, hasDropoffWindow, owne
 
   return (
     <main className="mx-auto max-w-[1400px] px-4 pb-24">
+{embedded ? (
+        <section className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm">
+          <p className="max-w-2xl text-muted">Click a work to mark it dropped off{owner ? ", or to mark it no longer available and ask the artist for another" : ""}.</p>
+          <Link href="/admin/logistics" className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line hover:bg-paper">Drop-off times</Link>
+        </section>
+      ) : (
       <section className="flex flex-wrap items-end justify-between gap-4 py-6">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted">{show.name}</p>
@@ -120,6 +126,7 @@ export function WorksTracker({ show, works, replacements, hasDropoffWindow, owne
           </Link>
         </div>
       </section>
+      )}
 
       {!hasDropoffWindow && <p className="mb-4 rounded-md bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">This show has no drop-off times yet, so no work can show as booked. Add them on the Logistics page.</p>}
 

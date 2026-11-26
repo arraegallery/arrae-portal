@@ -1,27 +1,7 @@
-import { requireOwner } from "@/lib/team";
-import { notFound } from "next/navigation";
-import { getSandbox, getShows, getSandboxLayout, getWallSetup } from "@/lib/queries";
-import { SandboxBoard } from "./SandboxBoard";
+import { redirect } from "next/navigation";
 
-// The sandbox loads every work in the collection; give it room on Vercel.
-export const maxDuration = 60;
-
-export default async function SandboxPage({ params }: { params: Promise<{ show: string }> }) {
-  await requireOwner();
+/** The sandbox now lives on the show's own page, as its Curate step. Old links keep working. */
+export default async function SandboxRedirect({ params }: { params: Promise<{ show: string }> }) {
   const { show } = await params;
-  const started = Date.now();
-  const [data, shows, walls, layout] = await Promise.all([getSandbox(show), getShows(), getWallSetup(), getSandboxLayout(show)]);
-  console.log(`sandbox ${show}: data ready in ${Date.now() - started}ms, ${data?.works.length ?? 0} works`);
-  if (!data) notFound();
-  return (
-    <SandboxBoard
-      show={{ id: data.show.id, name: data.show.name, type: data.show.type }}
-      shows={shows.map((s) => ({ id: s.id, name: s.name, type: s.type }))}
-      sandbox={data.sandbox}
-      works={data.works}
-      walls={walls}
-      layout={layout}
-      collectionArtists={data.collectionArtists}
-    />
-  );
+  redirect(`/admin/s/${show}/curate`);
 }

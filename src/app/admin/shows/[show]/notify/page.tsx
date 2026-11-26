@@ -1,15 +1,7 @@
-import { notFound } from "next/navigation";
-import { emailConfigured } from "@/lib/email";
-import { requireOwner } from "@/lib/team";
-import { getWelcomeData } from "@/lib/welcome-data";
-import { NotifyBoard } from "./NotifyBoard";
+import { redirect } from "next/navigation";
 
-export const maxDuration = 60;
-
-export default async function NotifyPage({ params }: { params: Promise<{ show: string }> }) {
-  const me = await requireOwner();
+/** Notify artists now lives on the show's own page, as its Notify step. Old links keep working. */
+export default async function NotifyRedirect({ params }: { params: Promise<{ show: string }> }) {
   const { show } = await params;
-  const data = await getWelcomeData(show);
-  if (!data) notFound();
-  return <NotifyBoard {...data} me={me} configured={emailConfigured()} />;
+  redirect(`/admin/s/${show}/notify`);
 }

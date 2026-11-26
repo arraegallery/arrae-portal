@@ -13,7 +13,7 @@ export function ShowTabs({ showId, active, sandboxCount, newCount }: { showId: s
   );
   return (
     <nav className="mt-4 flex gap-6 border-b border-line">
-      {tab("review", `/admin/review/${showId}`, "Review board")}
+      {tab("review", `/admin/s/${showId}/review`, "Review board")}
       {tab(
         "new",
         `/admin/review/${showId}/new`,
@@ -23,7 +23,7 @@ export function ShowTabs({ showId, active, sandboxCount, newCount }: { showId: s
       )}
       {tab(
         "sandbox",
-        `/admin/sandbox/${showId}`,
+        `/admin/s/${showId}/curate`,
         <>
           Sandbox{sandboxCount ? <span className="ml-1.5 rounded-full bg-ink/10 px-1.5 text-xs">{sandboxCount}</span> : null}
         </>,

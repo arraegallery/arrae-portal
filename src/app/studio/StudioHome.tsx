@@ -577,6 +577,7 @@ function BookTime({ b }: { b: StudioBookings[number] }) {
         {b.location ? ` · ${b.location}` : ""}
       </p>
       {b.note && <p className="mt-2 whitespace-pre-line text-sm">{b.note}</p>}
+      <StepTracker b={b} />
       {b.needsAgreement && !b.booking && (
         <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">
           <span className="min-w-0 flex-1">Please sign your Partnership Agreement first. As soon as it&rsquo;s signed, the drop-off calendar opens here.</span>
@@ -585,7 +586,7 @@ function BookTime({ b }: { b: StudioBookings[number] }) {
           </Link>
         </div>
       )}
-      {b.booking && !changing && (
+      {b.booking && !changing && !b.done.every((x) => x.done) && new Date(b.booking.start) > new Date() && (
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-900 ring-1 ring-emerald-200">
             {fmtSlot(b.booking.start, { weekday: "long", month: "long", day: "numeric" })} at {fmtSlot(b.booking.start, { hour: "numeric", minute: "2-digit" })}
@@ -657,5 +658,31 @@ function BookTime({ b }: { b: StudioBookings[number] }) {
         ))}
       {msg && <p className={`mt-3 rounded-md p-3 text-sm ring-1 ${msg.ok ? "bg-emerald-50 text-emerald-900 ring-emerald-200" : "bg-rose-50 text-rose-900 ring-rose-200"}`}>{msg.text}</p>}
     </section>
+  );
+}
+
+/** Where the artist is with this show: agreement, time booked, works in (or home). */
+function StepTracker({ b }: { b: { kind: string; signed: boolean; booking: unknown; done: { title: string; done: boolean }[] } }) {
+  const n = b.done.filter((x) => x.done).length;
+  const steps =
+    b.kind === "dropoff"
+      ? [
+          { label: "Agreement signed", ok: b.signed },
+          { label: "Drop-off time booked", ok: !!b.booking },
+          { label: n === b.done.length ? "All works dropped off" : `Works dropped off: ${n} of ${b.done.length}`, ok: n === b.done.length },
+        ]
+      : [
+          { label: "Pick-up time booked", ok: !!b.booking },
+          { label: n === b.done.length ? "All works picked up" : `Works picked up: ${n} of ${b.done.length}`, ok: n === b.done.length },
+        ];
+  return (
+    <ol className="mt-4 flex flex-wrap gap-2 text-sm">
+      {steps.map((st, i) => (
+        <li key={st.label} className={`flex items-center gap-2 rounded-full px-3 py-1 ring-1 ${st.ok ? "bg-emerald-50 text-emerald-900 ring-emerald-200" : "bg-white text-muted ring-line"}`}>
+          <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${st.ok ? "bg-emerald-600 text-white" : "ring-1 ring-line"}`}>{st.ok ? "✓" : i + 1}</span>
+          {st.label}
+        </li>
+      ))}
+    </ol>
   );
 }

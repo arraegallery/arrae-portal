@@ -86,6 +86,7 @@ export async function putForwardWorks(workIds: string[], showId: string) {
   for (const w of available) await logActivity({ artistId: w.artistId, workId: w.id, showId, kind: "submission", body: `Artist put "${w.title}" forward for ${show.name}`, actor: me.email });
   revalidatePath("/studio");
   revalidatePath(`/admin/review/${showId}`);
+  revalidatePath("/admin/s", "layout");
 }
 
 /** Take a work back out of a show, only while ARRAE hasn't reviewed it yet. */

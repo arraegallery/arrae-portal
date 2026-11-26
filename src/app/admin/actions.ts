@@ -134,6 +134,7 @@ export async function saveWallSetup(setup: WallSetup, remap?: (number | null)[])
     }
   }
   revalidatePath("/admin/sandbox", "layout");
+  revalidatePath("/admin/s", "layout");
 }
 
 /** Saves where every work sits on the sandbox's to-scale wall for one show; null clears it so works line up again. */
