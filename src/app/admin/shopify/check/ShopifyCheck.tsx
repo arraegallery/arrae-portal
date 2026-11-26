@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { getShopifyCheck } from "@/lib/shopify-check";
-import { setShopifyChecked } from "./actions";
+import { setShopifyChecked } from "../actions";
 
 type Data = Awaited<ReturnType<typeof getShopifyCheck>>;
 type Row = Data["rows"][number];
@@ -44,7 +44,7 @@ export function ShopifyCheck({ shows, show, rows }: Data) {
           profile, then tick each work once it looks right.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <select value={show?.id ?? ""} onChange={(e) => router.push(`/admin/shopify?show=${encodeURIComponent(e.target.value)}`)} className="rounded-md bg-white px-3 py-1.5 text-sm ring-1 ring-line">
+          <select value={show?.id ?? ""} onChange={(e) => router.push(`/admin/shopify/check?show=${encodeURIComponent(e.target.value)}`)} className="rounded-md bg-white px-3 py-1.5 text-sm ring-1 ring-line">
             {shows.map((x) => (
               <option key={x.id} value={x.id}>
                 {x.name}
@@ -75,7 +75,11 @@ export function ShopifyCheck({ shows, show, rows }: Data) {
         </ul>
       )}
       <p className="mt-6 text-xs text-muted">
-        Sending checked works to Shopify as products needs a Shopify Admin connection. Once that&rsquo;s set up, a &ldquo;Push to Shopify&rdquo; button will appear here for checked works.
+        To put works on Shopify, use{" "}
+        <Link href={`/admin/shopify?tab=works&show=${encodeURIComponent(show?.id ?? "")}`} className="underline">
+          Shopify → Artworks
+        </Link>
+        .
       </p>
     </main>
   );
