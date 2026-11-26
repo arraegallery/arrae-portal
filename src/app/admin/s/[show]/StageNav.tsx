@@ -12,7 +12,9 @@ export function StageTabs({ showId, current, facts }: { showId: string; current:
   const nowIndex = STAGES.findIndex((st) => st.key === current);
   const onRef = useRef<HTMLAnchorElement>(null);
   // On a phone the tabs scroll sideways: keep the open step in view.
-  useEffect(() => onRef.current?.scrollIntoView({ block: "nearest", inline: "center" }), [active]);
+  useEffect(() => {
+    onRef.current?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [active]);
   return (
     <nav aria-label="Show steps" className="-mx-4 mt-5 overflow-x-auto px-4">
       <ol className="flex min-w-max border-b border-line">
