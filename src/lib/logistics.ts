@@ -202,6 +202,9 @@ export async function getStudioBookings(artistIds: string[]) {
       // Everyone exhibiting signs the Partnership Agreement before they can book a drop-off.
       needsAgreement: w.kind === "dropoff" && !signed,
       works: myWorks.map((r) => r.work.title),
+      /** Where each work is: in the gallery (drop-off) or back home (pick-up). */
+      done: myWorks.map((r) => ({ title: r.work.title, done: !!(w.kind === "dropoff" ? r.sw.receivedAt : r.sw.pickedUpAt) })),
+      signed,
       booking: mine ? { id: mine.id, start: mine.startsAt.toISOString(), end: mine.endsAt.toISOString() } : null,
       days: windowSlots(
         w,

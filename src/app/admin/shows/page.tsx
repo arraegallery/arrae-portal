@@ -1,10 +1,6 @@
-import { requireOwner } from "@/lib/team";
-import { getShowsAdmin } from "@/lib/queries";
-import { inviteUrl, listInvites } from "@/lib/apply-invites";
-import { ShowsManager } from "./ShowsManager";
+import { redirect } from "next/navigation";
 
-export default async function ShowsPage() {
-  await requireOwner();
-  const [shows, invites] = await Promise.all([getShowsAdmin(), listInvites()]);
-  return <ShowsManager shows={shows} invites={invites.map((x) => ({ ...x, url: inviteUrl(x.token) }))} />;
+/** Show settings moved: the Shows list, and each show's Call step for its dates. */
+export default function ShowsSettingsRedirect() {
+  redirect("/admin/s");
 }

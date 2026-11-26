@@ -28,6 +28,7 @@ async function asResult(fn: () => Promise<boolean>): Promise<Result> {
 function refresh(showId: string, artistId?: string | null) {
   revalidatePath(`/admin/shows/${showId}/works`);
   revalidatePath(`/admin/sandbox/${showId}`);
+  revalidatePath("/admin/s", "layout");
   revalidatePath("/admin/logistics");
   revalidatePath("/studio");
   if (artistId) revalidatePath(`/admin/artists/${artistId}`);

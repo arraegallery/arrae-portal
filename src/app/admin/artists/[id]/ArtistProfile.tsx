@@ -137,9 +137,24 @@ export function ArtistProfile({ profile, owner, agreement, documents, bioWriter 
         </div>
       </section>
 
+      <nav aria-label="Jump to" className="sticky top-[57px] z-20 -mx-4 mb-6 flex gap-1 overflow-x-auto border-b border-line bg-paper/95 px-4 py-2 text-sm backdrop-blur">
+        {[
+          ["#works", "Works"],
+          ["#shows", "Shows"],
+          ["#messages", "Messages"],
+          ["#documents", "Documents"],
+          ["#details", "Details & bio"],
+          ["#notes", "Notes"],
+          ["#history", "Change log"],
+        ].map(([href, label]) => (
+          <a key={href} href={href} className="shrink-0 rounded-full px-3 py-1 text-muted ring-1 ring-line hover:bg-white hover:text-ink">
+            {label}
+          </a>
+        ))}
+      </nav>
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <section className="space-y-4">
-          <h2 className="text-xs uppercase tracking-wider text-muted">Details</h2>
+          <h2 id="details" className="scroll-mt-24 text-xs uppercase tracking-wider text-muted">Details</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {FIELDS.map(([k, label]) => (
               <label key={k} className="text-sm">
@@ -185,7 +200,7 @@ export function ArtistProfile({ profile, owner, agreement, documents, bioWriter 
           </label>
 
           <div>
-            <h2 className="text-xs uppercase tracking-wider text-muted">Shows</h2>
+            <h2 id="shows" className="scroll-mt-24 text-xs uppercase tracking-wider text-muted">Shows</h2>
             {profile.showHistory.length === 0 ? (
               <p className="mt-2 text-sm text-muted">Not in any show yet.</p>
             ) : (
@@ -218,7 +233,7 @@ export function ArtistProfile({ profile, owner, agreement, documents, bioWriter 
           </div>
 
           <div>
-            <h2 className="text-xs uppercase tracking-wider text-muted">Onboarding</h2>
+            <h2 id="onboarding" className="scroll-mt-24 text-xs uppercase tracking-wider text-muted">Onboarding</h2>
             <div className="mt-2 flex flex-wrap gap-2">
               {ARTIST_ONBOARDING.map(([k, label]) => (
                 <Chip key={k} done={!!onboarding[k]} label={label} disabled={!owner} onClick={() => toggleOnboarding(k, null)} />
@@ -256,20 +271,20 @@ export function ArtistProfile({ profile, owner, agreement, documents, bioWriter 
         </section>
 
         <section>
-          <h2 className="text-xs uppercase tracking-wider text-muted">Works ({profile.works.length})</h2>
+          <h2 id="works" className="scroll-mt-24 text-xs uppercase tracking-wider text-muted">Works ({profile.works.length})</h2>
           <ul className="mt-3 space-y-3">
             {profile.works.map((w) => (
               <WorkRow key={w.id} work={w} shows={profile.shows} owner={owner} artistName={saved.name} changes={profile.changes.filter((c) => c.workId === w.id)} />
             ))}
           </ul>
           <section id="messages" className="mt-8 scroll-mt-20">
-            <h2 className="text-xs uppercase tracking-wider text-muted">Messages with {saved.name.split(/\s+/)[0]}</h2>
+            <h2 id="messages" className="scroll-mt-24 text-xs uppercase tracking-wider text-muted">Messages with {saved.name.split(/\s+/)[0]}</h2>
             <p className="mb-2 mt-1 text-xs text-muted">The artist sees this conversation in their studio and gets an email when you write.</p>
             <Thread initial={profile.messages} me="arrae" otherName={saved.name.split(/\s+/)[0]} send={(body) => sendMessageToArtist(a.id, body)} placeholder={`Write to ${saved.name}…`} />
           </section>
           {owner && documents && (
             <section id="documents" className="mt-8 scroll-mt-20">
-              <h2 className="text-xs uppercase tracking-wider text-muted">Documents</h2>
+              <h2 id="documents" className="scroll-mt-24 text-xs uppercase tracking-wider text-muted">Documents</h2>
               <p className="mb-2 mt-1 text-xs text-muted">Invoices, payment statements, W-9s and certificates. Signed agreements appear here on their own.</p>
               <DocumentCenter
                 mode="arrae"
@@ -336,7 +351,7 @@ function ChangeLog({ changes, works }: { changes: Change[]; works: Work[] }) {
   const prices = changes.filter((c) => c.field === "priceUsd");
   return (
     <div>
-      <h2 className="text-xs uppercase tracking-wider text-muted">Change log</h2>
+      <h2 id="history" className="scroll-mt-24 text-xs uppercase tracking-wider text-muted">Change log</h2>
       {changes.length === 0 ? (
         <p className="mt-2 text-sm text-muted">No edits to these works yet. Price, title and size changes will be listed here.</p>
       ) : (
@@ -771,7 +786,7 @@ function ArtistNotes({ artistId, notes: initial, works }: { artistId: string; no
   const own = notes.filter((n) => n.kind === "note");
   return (
     <section className="mt-8">
-      <h2 className="text-xs uppercase tracking-wider text-muted">Curator notes</h2>
+      <h2 id="notes" className="scroll-mt-24 text-xs uppercase tracking-wider text-muted">Curator notes</h2>
       <textarea
         value={draft}
         onChange={(e) => setDraft(e.target.value)}

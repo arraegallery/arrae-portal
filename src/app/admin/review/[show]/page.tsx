@@ -1,22 +1,8 @@
-import { requireOwner } from "@/lib/team";
-import { notFound } from "next/navigation";
-import { getArtistList, getBoard, getSandboxWorkIds, getShows, showsOfType } from "@/lib/queries";
-import { ReviewBoard } from "./ReviewBoard";
+import { redirect } from "next/navigation";
 
-// Fail within a minute rather than spin for Vercel's five-minute ceiling.
-export const maxDuration = 60;
-
-export default async function ReviewPage({ params, searchParams }: { params: Promise<{ show: string }>; searchParams: Promise<{ artist?: string; work?: string }> }) {
-  await requireOwner();
+/** The review board now lives on the show's own page, as its Review step. Old links keep working. */
+export default async function ReviewRedirect({ params, searchParams }: { params: Promise<{ show: string }>; searchParams: Promise<Record<string, string>> }) {
   const { show } = await params;
-  const { artist: focusArtist, work: focusWork } = await searchParams;
-  const [board, sandboxIds, shows, artists] = await Promise.all([getBoard(show), getSandboxWorkIds(show), getShows(), getArtistList()]);
-  if (!board) notFound();
-  return <ReviewBoard show={{ id: board.show.id, name: board.show.name, type: board.show.type }} entries={board.entries} sandboxIds={sandboxIds}
-      shows={shows.map((x) => ({ id: x.id, name: x.name }))}
-      sameType={board.show.type === "Volume" || board.show.type === "Takeover" ? showsOfType(shows, board.show.type).map((x) => ({ id: x.id, name: x.name })) : []}
-      artists={artists}
-      focusArtist={focusArtist}
-      focusWork={focusWork}
-    />;
+  const q = new URLSearchParams(await searchParams).toString();
+  redirect(`/admin/s/${show}/review${q ? `?${q}` : ""}`);
 }
