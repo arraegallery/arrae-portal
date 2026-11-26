@@ -2,6 +2,8 @@
 
 import { and, asc, eq, gt, inArray, isNull, lt, desc, like, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { fillArraeBios } from "@/lib/arrae-bio-auto";
 import { db, schema as s } from "@/db";
 import { requireOwner, requireTeam } from "@/lib/team";
 import { APPLICATION_STATUSES, WORK_STATUSES, type ApplicationStatus, type WorkStatus } from "@/lib/status";
@@ -16,6 +18,7 @@ import { DIRECT_EMAIL_KIND, MORE_WORKS, directEmailBody } from "@/lib/direct-ema
 import { personalize, renderEmail, renderText, sendEmails, type EmailContent } from "@/lib/email";
 import { oneClickUrl, optedOut, unsubscribeUrl } from "@/lib/unsubscribe";
 import { finalizeConflicts, type FinalizeWork } from "@/lib/finalize";
+import { createInvite, inviteUrl, setInviteOff } from "@/lib/apply-invites";
 import { signedImageUrls } from "@/lib/images";
 import { WALLS_KEY, layoutKey, parseLayout, parseWallSetup, remapLayout, type WallLayout, type WallSetup } from "@/lib/walls";
 
@@ -51,6 +54,8 @@ export async function setApplicationStatus(applicationId: string, status: Applic
   if (status === "Waitlist") await addToWaitlist(app.artistId, app.showId);
   else if (status === "Selected" || status === "Not selected" || status === "Withdrawn") await removeFromWaitlist(app.artistId);
   await log({ artistId: app.artistId, showId: app.showId, kind: "status", body: `Application set to ${status}`, actor });
+  // Accepted: write their ARRAE bio from their own bio, after this answer has gone back.
+  if (status === "Selected") after(() => fillArraeBios([app.artistId]));
   revalidatePath("/admin", "layout");
 }
 
@@ -310,6 +315,8 @@ export async function finalizeSandbox(showId: string) {
     dropped.length ? `${dropped.length} work${dropped.length === 1 ? "" : "s"} outside the sandbox marked Not included` : "",
   ].filter(Boolean);
   await log({ showId, kind: "show", body: `Finalized from the sandbox: ${ids.length} works selected${extra.length ? `; ${extra.join("; ")}` : ""}`, actor });
+  // Everyone in the show is accepted: write the ARRAE bios still missing, after this answer has gone back.
+  after(() => fillArraeBios(inSandbox));
   revalidatePath("/admin", "layout");
   return ids.length;
 }
@@ -651,6 +658,24 @@ export async function markArtistMessagesRead(artistId: string) {
 
 // ---- Shows ----
 
+/** A private link that lets someone apply to a show after its open call has closed. */
+export async function createApplyInvite(showId: string, label: string) {
+  const actor = await requireOwner();
+  const [show] = await db.select({ id: s.shows.id, name: s.shows.name }).from(s.shows).where(eq(s.shows.id, showId));
+  if (!show) throw new Error("That show doesn't exist");
+  const invite = await createInvite(show.id, label, actor);
+  await log({ showId: show.id, kind: "show", body: `Invite link made for late applications${invite.label ? ` (${invite.label})` : ""}`, actor });
+  revalidatePath("/admin/shows");
+  return { ...invite, url: inviteUrl(invite.token) };
+}
+
+export async function setApplyInviteOff(token: string, off: boolean) {
+  const actor = await requireOwner();
+  const invite = await setInviteOff(token, off);
+  await log({ showId: invite.showId, kind: "show", body: `Invite link ${off ? "turned off" : "turned back on"}${invite.label ? ` (${invite.label})` : ""}`, actor });
+  revalidatePath("/admin/shows");
+}
+
 type ShowFields = {
   name?: string;
   type?: string;
@@ -804,4 +829,14 @@ export async function nudgeApplicants(emails: string[]) {
       .where(inArray(s.applicantSignups.email, ok));
   revalidatePath("/admin/applications");
   return { sent: ok.length, skipped: wanted.length - ok.length };
+}
+
+/** "Write ARRAE bio" on the artist page: Claude writes it now from the artist's own bio (only fills an empty one). */
+export async function writeArraeBioNow(artistId: string) {
+  const actor = await requireOwner();
+  const written = await fillArraeBios([artistId], actor);
+  const [a] = await db.select({ arraeBio: s.artists.arraeBio }).from(s.artists).where(eq(s.artists.id, artistId));
+  if (!written && !a?.arraeBio?.trim()) throw new Error("Claude couldn't write the bio this time. Try again in a minute, or use Copy bio prompt.");
+  revalidatePath(`/admin/artists/${artistId}`);
+  return a?.arraeBio ?? "";
 }

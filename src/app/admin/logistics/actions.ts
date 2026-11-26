@@ -2,6 +2,7 @@
 
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { unstable_rethrow } from "next/navigation";
 import { db, schema as s } from "@/db";
 import { logActivity } from "@/lib/applications";
 import { bookSlot, cancelBookingRow, formatSlot, KIND_LABEL, setShowStep, worksToHandle, type BookingKind } from "@/lib/logistics";
@@ -56,7 +57,7 @@ const refresh = () => {
   revalidatePath("/studio");
 };
 
-export async function createBookingWindow(input: WindowInput) {
+async function createBookingWindowImpl(input: WindowInput) {
   const actor = (await requireTeam()).email;
   const values = cleanWindow(input);
   const [show] = await db.select({ id: s.shows.id }).from(s.shows).where(eq(s.shows.id, values.showId));
@@ -65,19 +66,19 @@ export async function createBookingWindow(input: WindowInput) {
   refresh();
 }
 
-export async function updateBookingWindow(id: number, input: WindowInput) {
+async function updateBookingWindowImpl(id: number, input: WindowInput) {
   await requireTeam();
   await db.update(s.bookingWindows).set(cleanWindow(input)).where(eq(s.bookingWindows.id, id));
   refresh();
 }
 
-export async function setBookingWindowOpen(id: number, open: boolean) {
+async function setBookingWindowOpenImpl(id: number, open: boolean) {
   await requireTeam();
   await db.update(s.bookingWindows).set({ open }).where(eq(s.bookingWindows.id, id));
   refresh();
 }
 
-export async function deleteBookingWindow(id: number) {
+async function deleteBookingWindowImpl(id: number) {
   await requireOwner();
   await db.delete(s.bookingWindows).where(eq(s.bookingWindows.id, id));
   refresh();
@@ -97,7 +98,7 @@ async function confirmToArtist(artistId: string, kind: BookingKind, show: string
 }
 
 /** ARRAE booking a time on an artist's behalf (they get a confirmation email). */
-export async function bookForArtist(windowId: number, artistId: string, start: string) {
+async function bookForArtistImpl(windowId: number, artistId: string, start: string) {
   const actor = (await requireTeam()).email;
   const r = await bookSlot({ windowId, artistId, start, by: actor, allowClosed: true });
   const [show] = await db.select({ name: s.shows.name }).from(s.shows).where(eq(s.shows.id, r.window.showId));
@@ -106,7 +107,7 @@ export async function bookForArtist(windowId: number, artistId: string, start: s
   refresh();
 }
 
-export async function cancelBooking(id: number) {
+async function cancelBookingImpl(id: number) {
   const actor = (await requireTeam()).email;
   const r = await cancelBookingRow(id);
   if (r?.window) await logActivity({ artistId: r.booking.artistId, showId: r.window.showId, kind: "logistics", body: `${KIND_LABEL[r.window.kind as BookingKind]} on ${formatSlot(r.booking.startsAt.toISOString())} cancelled by ARRAE`, actor });
@@ -114,7 +115,7 @@ export async function cancelBooking(id: number) {
 }
 
 /** Mark works as physically in the gallery (or back with the artist). */
-export async function markWorks(showId: string, workIds: string[], what: "received" | "pickedUp", done: boolean) {
+async function markWorksImpl(showId: string, workIds: string[], what: "received" | "pickedUp", done: boolean) {
   const actor = (await requireTeam()).email;
   if (!workIds.length) return;
   const now = done ? new Date() : null;
@@ -140,7 +141,7 @@ export async function markWorks(showId: string, workIds: string[], what: "receiv
 }
 
 /** A nudge in the artist's message thread (and by email) to pick a time. */
-export async function remindToBook(windowId: number, artistId: string) {
+async function remindToBookImpl(windowId: number, artistId: string) {
   const actor = (await requireTeam()).email;
   const [w] = await db.select().from(s.bookingWindows).where(eq(s.bookingWindows.id, windowId));
   const [a] = await db.select().from(s.artists).where(eq(s.artists.id, artistId));
@@ -153,9 +154,63 @@ export async function remindToBook(windowId: number, artistId: string) {
 }
 
 /** The private link Google Calendar subscribes to. Making a new one stops the old link working. */
-export async function resetCalendarLink() {
+async function resetCalendarLinkImpl() {
   await requireOwner();
   const token = crypto.randomUUID().replace(/-/g, "");
   await db.insert(s.appSettings).values({ key: "calendar_token", value: token }).onConflictDoUpdate({ target: s.appSettings.key, set: { value: token } });
   revalidatePath("/admin/logistics");
+}
+
+// ---- What the page calls ----
+// Errors thrown inside a server action reach the browser as Next's generic "An error occurred in the
+// Server Components render" in production, which hides messages like "This artist hasn't signed the
+// Partnership Agreement". So every action hands its message back instead of throwing.
+
+export type ActionResult = { ok: true } | { ok: false; error: string };
+
+async function asResult(fn: () => Promise<unknown>): Promise<ActionResult> {
+  try {
+    await fn();
+    return { ok: true };
+  } catch (e) {
+    unstable_rethrow(e); // sign-in redirects still work
+    console.error("logistics action failed:", e);
+    return { ok: false, error: (e as Error)?.message || "Something went wrong. Please try again." };
+  }
+}
+
+export async function createBookingWindow(...args: Parameters<typeof createBookingWindowImpl>) {
+  return asResult(() => createBookingWindowImpl(...args));
+}
+
+export async function updateBookingWindow(...args: Parameters<typeof updateBookingWindowImpl>) {
+  return asResult(() => updateBookingWindowImpl(...args));
+}
+
+export async function setBookingWindowOpen(...args: Parameters<typeof setBookingWindowOpenImpl>) {
+  return asResult(() => setBookingWindowOpenImpl(...args));
+}
+
+export async function deleteBookingWindow(...args: Parameters<typeof deleteBookingWindowImpl>) {
+  return asResult(() => deleteBookingWindowImpl(...args));
+}
+
+export async function bookForArtist(...args: Parameters<typeof bookForArtistImpl>) {
+  return asResult(() => bookForArtistImpl(...args));
+}
+
+export async function cancelBooking(...args: Parameters<typeof cancelBookingImpl>) {
+  return asResult(() => cancelBookingImpl(...args));
+}
+
+export async function markWorks(...args: Parameters<typeof markWorksImpl>) {
+  return asResult(() => markWorksImpl(...args));
+}
+
+export async function remindToBook(...args: Parameters<typeof remindToBookImpl>) {
+  return asResult(() => remindToBookImpl(...args));
+}
+
+export async function resetCalendarLink(...args: Parameters<typeof resetCalendarLinkImpl>) {
+  return asResult(() => resetCalendarLinkImpl(...args));
 }

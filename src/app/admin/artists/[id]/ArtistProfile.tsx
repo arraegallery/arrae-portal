@@ -18,6 +18,7 @@ import {
   setOnboardingStep,
   updateArtist,
   updateWork,
+  writeArraeBioNow,
 } from "../../actions";
 import { AgreementPanel, type AgreementSummary } from "../../agreements/AgreementPanel";
 import { DocumentCenter } from "@/components/DocumentCenter";
@@ -30,6 +31,7 @@ import { TRACKED_FIELDS } from "@/lib/change-fields";
 import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage";
 import type { getArtistProfile } from "@/lib/queries";
 import { STATUS_TONE } from "@/lib/status";
+import { arraeBioRequest } from "@/lib/arrae-bio-prompt";
 
 type Profile = NonNullable<Awaited<ReturnType<typeof getArtistProfile>>>;
 type Work = Profile["works"][number];
@@ -49,7 +51,7 @@ type Change = Profile["changes"][number];
 const ASK_NOTE = "Thank you for applying! Could you send us better photos of this work? Straight on, in good natural light, filling the frame, with no glare or background. A detail shot is welcome too.";
 type ShowOption = Profile["shows"][number];
 
-export function ArtistProfile({ profile, owner, agreement, documents }: { profile: Profile; owner: boolean; agreement: AgreementSummary; documents: DocRow[] | null }) {
+export function ArtistProfile({ profile, owner, agreement, documents, bioWriter = false }: { profile: Profile; owner: boolean; agreement: AgreementSummary; documents: DocRow[] | null; bioWriter?: boolean }) {
   const a = profile.artist;
   const initial = {
     name: a.name,
@@ -113,6 +115,13 @@ export function ArtistProfile({ profile, owner, agreement, documents }: { profil
           <h1 className="font-display text-4xl">{saved.name}</h1>
           {!owner && <span className="rounded-full bg-white px-2 py-0.5 text-xs text-muted ring-1 ring-line">View only</span>}
           {profile.onWaitlist && <span className={`rounded-full px-2 py-0.5 text-xs ring-1 ${STATUS_TONE.Waitlist}`}>On waitlist</span>}
+          <Link
+            href={`/admin/artists/${encodeURIComponent(a.id)}/sheet`}
+            className="ml-auto rounded-md bg-white px-3 py-1.5 text-sm ring-1 ring-line hover:ring-ink"
+            title="A one-page profile with headshot, bio and works, to print or save as PDF"
+          >
+            Print profile
+          </Link>
         </div>
         <div className="mt-2 flex flex-wrap gap-2 text-xs">
           {profile.applications.map((ap) => (
@@ -143,7 +152,21 @@ export function ArtistProfile({ profile, owner, agreement, documents }: { profil
           <label className="block text-sm">
             <span className="flex items-baseline justify-between">
               <span className="text-xs font-medium uppercase tracking-wider text-ink">ARRAE bio, for the Shopify collection</span>
-              <span className="text-xs text-muted">{form.arraeBio.trim() ? `${form.arraeBio.trim().split(/\s+/).length} words` : "Not written yet"}</span>
+              <span className="flex items-baseline gap-3 text-xs text-muted">
+                {owner && form.bio.trim() && <CopyBioPrompt name={form.name} ownBio={form.bio} />}
+                {bioWriter && form.bio.trim() && !form.arraeBio.trim() && !saved.arraeBio.trim() && (
+                  <WriteBioButton
+                    artistId={a.id}
+                    onDone={(bio) => {
+                      setForm((f) => ({ ...f, arraeBio: bio }));
+                      setSaved((v) => ({ ...v, arraeBio: bio }));
+                      setStatus("ARRAE bio written by Claude and saved. Please read it over.");
+                    }}
+                    onError={setStatus}
+                  />
+                )}
+                {form.arraeBio.trim() ? `${form.arraeBio.trim().split(/\s+/).length} words` : "Not written yet"}
+              </span>
             </span>
             <textarea
               value={form.arraeBio}
@@ -785,5 +808,50 @@ function ArtistNotes({ artistId, notes: initial, works }: { artistId: string; no
         </details>
       )}
     </section>
+  );
+}
+
+/** Copies the ARRAE bio prompt with this artist's own bio, to paste into Claude. */
+function CopyBioPrompt({ name, ownBio }: { name: string; ownBio: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async (e) => {
+        e.preventDefault();
+        await navigator.clipboard.writeText(arraeBioRequest(name, ownBio));
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      }}
+      title="Copies the ARRAE bio prompt together with the artist's own bio. Paste it into Claude, then paste the answer into this box."
+      className="rounded-md bg-white px-2 py-0.5 text-ink ring-1 ring-line hover:ring-ink"
+    >
+      {copied ? "Copied" : "Copy bio prompt"}
+    </button>
+  );
+}
+
+/** Claude writes the ARRAE bio now from the artist's own bio (only when it's empty). */
+function WriteBioButton({ artistId, onDone, onError }: { artistId: string; onDone: (bio: string) => void; onError: (m: string) => void }) {
+  const [busy, start] = useTransition();
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={(e) => {
+        e.preventDefault();
+        start(async () => {
+          try {
+            onDone(await writeArraeBioNow(artistId));
+          } catch (err) {
+            onError((err as Error).message);
+          }
+        });
+      }}
+      title="Claude writes the ARRAE bio from the artist's own bio, using the ARRAE bio prompt, and saves it"
+      className="rounded-md bg-ink px-2 py-0.5 text-white disabled:opacity-50"
+    >
+      {busy ? "Writing…" : "Write with Claude"}
+    </button>
   );
 }

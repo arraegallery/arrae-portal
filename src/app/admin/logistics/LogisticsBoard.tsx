@@ -36,11 +36,13 @@ function useRun() {
     start(async () => {
       setError(null);
       try {
-        await fn();
+        const r = (await fn()) as { ok?: boolean; error?: string } | undefined;
+        if (r && r.ok === false) throw new Error(r.error);
         after?.();
         router.refresh();
       } catch (e) {
-        setError((e as Error).message);
+        const msg = (e as Error).message || "";
+        setError(/Server Action .* was not found/i.test(msg) ? "This page is out of date. Please reload it (Cmd+R) and try again." : msg || "Something went wrong. Please try again.");
       }
     });
   return { run, pending, error };
@@ -400,7 +402,18 @@ function UnbookedRow({ u, w, what, doneLabel }: { u: Win["unbooked"][number]; w:
         </span>
       </div>
       <WorkTicks works={u.works} w={w} what={what} doneLabel={doneLabel} />
-      {booking && <SlotPicker w={w} label="Book" onPick={(start) => run(() => bookForArtist(w.id, u.artistId, start), () => setBooking(false))} pending={pending} />}
+      {booking &&
+        (w.kind === "dropoff" && !u.agreementSigned ? (
+          <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+            {u.artist?.name ?? "This artist"} needs to sign the Partnership Agreement in the portal before a drop-off can be booked.{" "}
+            <Link href={`/admin/artists/${u.artistId}`} className="font-medium underline">
+              Open their artist page to send it
+            </Link>
+            , then book once they&rsquo;ve signed.
+          </p>
+        ) : (
+          <SlotPicker w={w} label="Book" onPick={(start) => run(() => bookForArtist(w.id, u.artistId, start), () => setBooking(false))} pending={pending} />
+        ))}
       {error && <p className="mt-1 text-xs text-rose-700">{error}</p>}
     </li>
   );
