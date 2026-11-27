@@ -104,7 +104,14 @@ export function WorksTracker({ show, works, replacements, hasDropoffWindow, owne
 {embedded ? (
         <section className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm">
           <p className="max-w-2xl text-muted">Click a work to mark it dropped off{owner ? ", or to mark it no longer available and ask the artist for another" : ""}.</p>
-          <Link href="/admin/logistics" className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line hover:bg-paper">Drop-off times</Link>
+          <div className="flex flex-wrap gap-2">
+            {owner && (
+              <a href={`/admin/s/${show.id}/labels`} download title="Wall labels for every work in the show, ready to import into the Niimbot app" className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line hover:bg-paper">
+                Download labels (.xlsx)
+              </a>
+            )}
+            <Link href="/admin/logistics" className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line hover:bg-paper">Drop-off times</Link>
+          </div>
         </section>
       ) : (
       <section className="flex flex-wrap items-end justify-between gap-4 py-6">
@@ -120,6 +127,11 @@ export function WorksTracker({ show, works, replacements, hasDropoffWindow, owne
             <Link href={`/admin/sandbox/${show.id}`} className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line hover:bg-paper">
               Sandbox
             </Link>
+          )}
+          {owner && (
+            <a href={`/admin/s/${show.id}/labels`} download title="Wall labels for every work in the show, ready to import into the Niimbot app" className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line hover:bg-paper">
+              Download labels (.xlsx)
+            </a>
           )}
           <Link href="/admin/logistics" className="rounded-md bg-white px-3 py-1.5 ring-1 ring-line hover:bg-paper">
             Drop-off calendar
