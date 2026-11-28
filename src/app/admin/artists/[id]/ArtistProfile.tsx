@@ -32,6 +32,7 @@ import { ArtworkImage, formatPrice, formatSize } from "@/components/ArtworkImage
 import type { getArtistProfile } from "@/lib/queries";
 import { STATUS_TONE } from "@/lib/status";
 import { arraeBioRequest } from "@/lib/arrae-bio-prompt";
+import { applyArtistShopifyAction, planArtistShopifyAction } from "../../shopify/actions";
 
 type Profile = NonNullable<Awaited<ReturnType<typeof getArtistProfile>>>;
 type Work = Profile["works"][number];
@@ -206,7 +207,7 @@ export function ArtistProfile({ profile, owner, agreement, documents, bioWriter 
             ) : (
               <ul className="mt-2 divide-y divide-line rounded-lg bg-white text-sm ring-1 ring-line">
                 {profile.showHistory.map((h) => (
-                  <li key={h.showId} className="flex items-center gap-3 px-3 py-2">
+                  <li key={h.showId} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
                     {owner ? (
                       <Link href={`/admin/review/${h.showId}`} className="font-medium hover:underline">
                         {h.name}
@@ -226,6 +227,7 @@ export function ArtistProfile({ profile, owner, agreement, documents, bioWriter 
                         </span>
                       )}
                     </span>
+                    {owner && h.selectedWorks > 0 && <ShowShopTools artistId={profile.artist.id} showId={h.showId} />}
                   </li>
                 ))}
               </ul>
@@ -868,5 +870,97 @@ function WriteBioButton({ artistId, onDone, onError }: { artistId: string; onDon
     >
       {busy ? "Writing…" : "Write with Claude"}
     </button>
+  );
+}
+
+type ShopStep = { workId: string; title: string; action: "create" | "update" | "removeTag" | "ok" | "blocked"; detail: string };
+
+/** Per show on the artist page: this artist's wall labels, and a reviewed "Update Shopify" for just their works. */
+function ShowShopTools({ artistId, showId }: { artistId: string; showId: string }) {
+  const [open, setOpen] = useState(false);
+  const [steps, setSteps] = useState<ShopStep[] | null>(null);
+  const [done, setDone] = useState<{ title: string; ok: boolean; message: string }[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const load = () =>
+    start(async () => {
+      setError(null);
+      const r = await planArtistShopifyAction(artistId, showId);
+      if (r.ok) setSteps(r.value.steps);
+      else setError(r.error);
+    });
+  const todo = steps?.filter((x) => x.action === "create" || x.action === "update" || x.action === "removeTag").length ?? 0;
+  const icon = { create: "+", update: "↻", removeTag: "−", ok: "✓", blocked: "!" } as const;
+  return (
+    <div className="flex w-full items-center gap-3 text-xs">
+      <a href={`/admin/s/${showId}/labels?artist=${encodeURIComponent(artistId)}`} className="text-muted underline hover:text-ink">
+        Labels (.xlsx)
+      </a>
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(!open);
+          setDone(null);
+          if (!open) load();
+        }}
+        className="text-muted underline hover:text-ink"
+      >
+        {open ? "Close Shopify" : "Update Shopify…"}
+      </button>
+      {open && (
+        <div className="mt-2 w-full basis-full rounded-md bg-paper p-3 ring-1 ring-line">
+          {error && <p className="text-red-700">{error}</p>}
+          {pending && !steps && <p className="text-muted">Checking Shopify…</p>}
+          {steps && !done && (
+            <>
+              {steps.length === 0 ? (
+                <p className="text-muted">No works in this show.</p>
+              ) : (
+                <ul className="space-y-1">
+                  {steps.map((st) => (
+                    <li key={st.workId} className={st.action === "blocked" ? "text-amber-700" : st.action === "ok" ? "text-muted" : ""}>
+                      <span className="inline-block w-4 text-center">{icon[st.action]}</span> <span className="font-medium">{st.title}</span> · {st.detail}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {todo > 0 ? (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() =>
+                    start(async () => {
+                      setError(null);
+                      const r = await applyArtistShopifyAction(artistId, showId);
+                      if (r.ok) setDone(r.value);
+                      else setError(r.error);
+                    })
+                  }
+                  className="mt-3 rounded-md bg-ink px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                >
+                  {pending ? "Updating the live store…" : `Make ${todo} change${todo === 1 ? "" : "s"} on the live store`}
+                </button>
+              ) : (
+                steps.length > 0 && <p className="mt-2 text-muted">Nothing to change on Shopify.</p>
+              )}
+            </>
+          )}
+          {done && (
+            <>
+              <ul className="space-y-1">
+                {done.map((d, i) => (
+                  <li key={i} className={d.ok ? "" : "text-red-700"}>
+                    {d.ok ? "✓" : "✗"} <span className="font-medium">{d.title}</span> · {d.message}
+                  </li>
+                ))}
+              </ul>
+              <button type="button" onClick={() => { setDone(null); setSteps(null); load(); }} className="mt-2 text-muted underline">
+                Check again
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

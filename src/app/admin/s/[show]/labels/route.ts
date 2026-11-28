@@ -6,10 +6,11 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /** "<Show> Labels.xlsx": one row per artwork, ready to import into the Niimbot label app. */
-export async function GET(_req: Request, { params }: { params: Promise<{ show: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ show: string }> }) {
   await requireOwner();
   const { show } = await params;
-  const labels = await buildShowLabels(show);
+  const artist = new URL(req.url).searchParams.get("artist") || undefined;
+  const labels = await buildShowLabels(show, artist);
   if (!labels) return new Response("Show not found", { status: 404 });
   const file = buildXlsx(
     "Labels",
@@ -17,7 +18,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ show: s
     labels.rows.map((r) => LABEL_COLUMNS.map((c) => r[c])),
     LABEL_WIDTHS,
   );
-  const name = `${labels.showName.replace(/[\\/:*?"<>|]+/g, "-")} Labels.xlsx`;
+  const who = artist ? labels.rows[0]?.Artist : "";
+  const name = `${labels.showName}${who ? ` - ${who}` : ""} Labels.xlsx`.replace(/[\\/:*?"<>|]+/g, "-");
   return new Response(Buffer.from(file), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

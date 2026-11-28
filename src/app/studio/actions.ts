@@ -226,6 +226,15 @@ async function saveNewWork(input: NewWork) {
     await useInvite(target!.invite, 1, me.artist.name, show, [title]);
   }
   await logActivity({ artistId: me.artist.id, workId: input.workId, showId: show?.id, kind: "submission", body: `Artist submitted a new work, "${title}"${show ? ` for ${show.name}` : ""}`, actor: me.email });
+  if (!show)
+    // No open call: a roster artist adding to their body of work. Tell ARRAE so it can be considered for later shows.
+    await notifyEmail(arraeRecipients(), {
+      subject: `${me.artist.name} added a new work: ${title}`,
+      heading: `${me.artist.name} added a new work`,
+      body: `${me.artist.name} added "${title}" to their studio. It isn't tied to a show yet, so it can be considered for an upcoming one.`,
+      buttonLabel: "See their works",
+      buttonUrl: portalUrl(`/admin/artists/${me.artist.id}#works`),
+    }).catch((e) => console.error("new work email failed", e));
   revalidatePath("/studio");
   if (show) revalidatePath(`/admin/review/${show.id}`);
 }
