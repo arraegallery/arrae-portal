@@ -451,3 +451,122 @@ export async function updateProduct(workId: string, showId: string, fields: Work
   }
   await log(a.id, w.id, `Updated Shopify product /products/${p.handle} (${fields.join(", ")})`, actor, show.id);
 }
+
+/* ------------------------------------------------- one artist, one show */
+
+export type ArtistShopifyStep = {
+  workId: string;
+  title: string;
+  /** create = new product; update = fix what differs; removeTag = take it out of the show on Shopify; ok = nothing to do; blocked = can't go up yet. */
+  action: "create" | "update" | "removeTag" | "ok" | "blocked";
+  detail: string;
+  fields?: WorkUpdate[];
+};
+
+const DIFF_WORDS: Record<WorkDiff, string> = { title: "title", price: "price", vendor: "artist name", collection: "artist collection", showTag: "show tag" };
+
+/**
+ * What "Update Shopify" on the artist page would do for one artist in one show: create products for
+ * Selected works that aren't on Shopify, fix the ones that differ, and take the show tag off works
+ * that are no longer in the show. Changes nothing.
+ */
+export async function planArtistShopify(artistId: string, showId: string) {
+  if (!shopifyConfigured()) throw new Error(`Shopify isn't connected in the portal yet (missing ${shopifyMissingSettings().join(", ")}).`);
+  const [show] = await db.select().from(s.shows).where(eq(s.shows.id, showId));
+  if (!show) throw new Error("Unknown show.");
+  const a = await artistOrThrow(artistId);
+  const rows = await db
+    .select({ sw: s.showWorks, work: s.works })
+    .from(s.showWorks)
+    .innerJoin(s.works, eq(s.works.id, s.showWorks.workId))
+    .where(and(eq(s.showWorks.showId, showId), eq(s.works.artistId, artistId)));
+  const tag = showTag(show);
+  const cols = await loadCollections();
+  const showCol = findShowCollection(show, cols);
+  const artistCol = a.shopifyCollectionHandle ? cols.find((c) => c.handle === a.shopifyCollectionHandle) ?? null : null;
+  const products = new Map((await loadProductsByIds(rows.map((r) => r.work.shopifyProductId ?? ""))).map((p) => [p.id, p]));
+  const ids = rows.map((r) => r.work.id);
+  const photos = new Set(
+    ids.length ? (await db.select({ id: s.workImages.workId }).from(s.workImages).where(and(inArray(s.workImages.workId, ids), isNotNull(s.workImages.storagePath)))).map((x) => x.id) : [],
+  );
+
+  const steps: ArtistShopifyStep[] = [];
+  for (const { sw, work: w } of rows) {
+    const p = w.shopifyProductId ? products.get(w.shopifyProductId) ?? null : null;
+    if (sw.status !== "Selected") {
+      if (p && showMembership(p, tag, showCol)) steps.push({ workId: w.id, title: w.title, action: "removeTag", detail: `${sw.status} for ${show.name}: take it out of the ${show.name} collection` });
+      continue;
+    }
+    if (!p) {
+      const problems = [
+        !artistCol && "the artist has no Shopify collection yet",
+        w.priceUsd === null && "no price",
+        !photos.has(w.id) && "no photo",
+        w.soldAt && "marked sold",
+      ].filter(Boolean);
+      steps.push(
+        problems.length
+          ? { workId: w.id, title: w.title, action: "blocked", detail: `Can't go on Shopify: ${problems.join(", ")}` }
+          : { workId: w.id, title: w.title, action: "create", detail: `New product at ${priceText(w.priceUsd)} USD, tagged "${tag}"` },
+      );
+      continue;
+    }
+    const diffs: WorkDiff[] = [];
+    if (p.title.trim() !== w.title.trim()) diffs.push("title");
+    if (priceText(p.price) !== priceText(w.priceUsd)) diffs.push("price");
+    if (p.vendor.trim() !== a.name.trim()) diffs.push("vendor");
+    if (artistCol && !p.collectionIds.includes(artistCol.id)) diffs.push("collection");
+    if (!showMembership(p, tag, showCol)) diffs.push("showTag");
+    steps.push(
+      diffs.length
+        ? { workId: w.id, title: w.title, action: "update", detail: `Update ${diffs.map((d) => DIFF_WORDS[d]).join(", ")}`, fields: diffs }
+        : { workId: w.id, title: w.title, action: "ok", detail: p.totalInventory === 0 ? "On Shopify, but out of stock" : "On Shopify and up to date" },
+    );
+  }
+  const order = { create: 0, update: 1, removeTag: 2, blocked: 3, ok: 4 };
+  steps.sort((x, y) => order[x.action] - order[y.action] || x.title.localeCompare(y.title));
+  return { show: { id: show.id, name: show.name }, steps };
+}
+
+/** Does everything planArtistShopify lists. Returns one line per work. */
+export async function applyArtistShopify(artistId: string, showId: string, actor: string) {
+  const { steps } = await planArtistShopify(artistId, showId);
+  const out: { title: string; ok: boolean; message: string }[] = [];
+  const creates = steps.filter((x) => x.action === "create");
+  if (creates.length) {
+    const res = await createProducts(creates.map((x) => x.workId), showId, actor);
+    for (const r of res) out.push({ title: creates.find((c) => c.workId === r.id)!.title, ok: r.ok, message: r.ok ? `Created /products/${r.message}` : r.message });
+  }
+  for (const st of steps) {
+    try {
+      if (st.action === "update") {
+        await updateProduct(st.workId, showId, st.fields ?? [], actor);
+        out.push({ title: st.title, ok: true, message: st.detail.replace(/^Update/, "Updated") });
+      } else if (st.action === "removeTag") {
+        await removeFromShowOnShopify(st.workId, showId, actor);
+        out.push({ title: st.title, ok: true, message: "Taken out of the show collection" });
+      }
+    } catch (e) {
+      out.push({ title: st.title, ok: false, message: (e as Error).message });
+    }
+  }
+  return out;
+}
+
+async function removeFromShowOnShopify(workId: string, showId: string, actor: string) {
+  const { work: w, show } = await workContext(workId, showId);
+  if (!w.shopifyProductId) return;
+  const [p] = await loadProductsByIds([w.shopifyProductId]);
+  if (!p) return;
+  const showCol = findShowCollection(show, await loadCollections());
+  const tag = showTag(show).toLowerCase();
+  const input: Record<string, unknown> = { id: p.id };
+  if (showCol && !showCol.smart) input.collectionsToLeave = [showCol.id];
+  else input.tags = p.tags.filter((t) => t.toLowerCase() !== tag);
+  const data = await shopifyGql<{ productUpdate: { userErrors: { field: string[] | null; message: string }[] } }>(
+    `mutation($product: ProductUpdateInput!) { productUpdate(product: $product) { product { id } userErrors { field message } } }`,
+    { product: input },
+  );
+  checkUserErrors(data.productUpdate, "Taking the product out of the show");
+  await log(w.artistId, w.id, `Took Shopify product /products/${p.handle} out of ${show.name}`, actor, show.id);
+}

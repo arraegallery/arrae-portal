@@ -6,11 +6,13 @@ import { db, schema as s } from "@/db";
 import { asResult } from "@/lib/action-result";
 import { requireOwner } from "@/lib/team";
 import {
+  applyArtistShopify,
   createArtistCollection,
   createProducts,
   createShowCollection,
   linkArtistCollection,
   linkProduct,
+  planArtistShopify,
   updateArtistCollection,
   updateProduct,
   type ArtistDiff,
@@ -85,5 +87,24 @@ export async function updateProductAction(workId: string, showId: string, fields
   return asResult(async () => {
     const me = await requireOwner();
     await updateProduct(workId, showId, fields, me);
+  });
+}
+
+/** Artist page: what "Update Shopify" would change for this artist in this show (read only). */
+export async function planArtistShopifyAction(artistId: string, showId: string) {
+  return asResult(async () => {
+    await requireOwner();
+    return planArtistShopify(artistId, showId);
+  });
+}
+
+/** Artist page: create / fix this artist's products for one show, after Anai has seen the plan. */
+export async function applyArtistShopifyAction(artistId: string, showId: string) {
+  return asResult(async () => {
+    const me = await requireOwner();
+    const res = await applyArtistShopify(artistId, showId, me);
+    revalidatePath(`/admin/artists/${artistId}`);
+    revalidatePath("/admin/shopify");
+    return res;
   });
 }

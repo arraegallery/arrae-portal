@@ -19,6 +19,7 @@ export async function getStudio(artistIds: string[]) {
         .from(s.workImages)
         .where(and(inArray(s.workImages.workId, workIds), eq(s.workImages.position, 0)))
     : [];
+  const people = await db.select({ collection: s.artists.shopifyCollectionHandle }).from(s.artists).where(inArray(s.artists.id, artistIds));
   const messages = await db.select().from(s.artistMessages).where(inArray(s.artistMessages.artistId, artistIds)).orderBy(asc(s.artistMessages.createdAt));
 
   const showById = new Map(shows.map((x) => [x.id, x]));
@@ -40,7 +41,13 @@ export async function getStudio(artistIds: string[]) {
   const thumbs = await signedImageUrls(images.map((i) => i.thumbPath ?? i.storagePath));
   const imageByWork = new Map(images.map((img, i) => [img.workId, { id: img.id, thumb: thumbs[i], full: null as string | null, w: img.widthPx, h: img.heightPx }]));
 
+  // Roster artists (a collection on the ARRAE site, or selected for any show) can add new works any
+  // time, even with no open call. ARRAE is told, and the work waits for a later show.
+  const roster =
+    people.some((p) => !!p.collection) || apps.some((a) => a.status === "Selected") || showWorks.some((x) => x.status === "Selected");
+
   return {
+    roster,
     shows: shows.map((x) => ({ id: x.id, name: x.name, type: x.type, open: x.openForSubmissions, description: x.description, deadline: x.applicationDeadline, opensOn: x.opensOn })),
     // Open calls, plus any show where ARRAE asked this artist for more works (even once it has closed).
     openShows: shows

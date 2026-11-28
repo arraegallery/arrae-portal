@@ -37,6 +37,9 @@ export function StudioHome({
   const active = studio.works.filter((w) => !w.archived);
   const archived = studio.works.filter((w) => w.archived);
   const [showArchive, setShowArchive] = useState(false);
+  const router = useRouter();
+  const [addingWork, setAddingWork] = useState(false);
+  const [addedNote, setAddedNote] = useState<string | null>(null);
   return (
     <main className="mx-auto max-w-5xl px-4 pb-24">
       <section className="py-8">
@@ -88,8 +91,29 @@ export function StudioHome({
       ))}
 
       <section className="mt-12">
-        <h2 className="font-display text-2xl">Your works</h2>
-        <p className="mt-1 text-sm text-muted">Keep titles, sizes and prices up to date here. ARRAE sees every change.</p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="font-display text-2xl">Your works</h2>
+            <p className="mt-1 text-sm text-muted">Keep titles, sizes and prices up to date here. ARRAE sees every change.</p>
+          </div>
+          {studio.roster && !addingWork && (
+            <button onClick={() => { setAddingWork(true); setAddedNote(null); }} className="rounded-md px-4 py-2 text-sm ring-1 ring-line hover:bg-paper">
+              + Add a new work
+            </button>
+          )}
+        </div>
+        {addingWork && (
+          <NewWorkForm
+            show={null}
+            onDone={(title) => {
+              setAddingWork(false);
+              setAddedNote(`Thank you. "${title}" is in your works, and ARRAE has been told so it can be considered for an upcoming show.`);
+              router.refresh();
+            }}
+            onCancel={() => setAddingWork(false)}
+          />
+        )}
+        {addedNote && <p className="mt-4 rounded-md bg-emerald-50 p-3 text-sm text-emerald-900 ring-1 ring-emerald-200">{addedNote}</p>}
         {active.length === 0 ? (
           <p className="mt-6 text-sm text-muted">{archived.length ? "Every work is in your archive." : "No works yet."}</p>
         ) : (
@@ -265,7 +289,7 @@ function OpenCall({ show, works }: { show: OpenShow; works: Work[] }) {
   );
 }
 
-function NewWorkForm({ show, onDone, onCancel }: { show: OpenShow; onDone: (title: string) => void; onCancel: () => void }) {
+function NewWorkForm({ show, onDone, onCancel }: { show: OpenShow | null; onDone: (title: string) => void; onCancel: () => void }) {
   const [f, setF] = useState({ title: "", year: "", medium: "", height: "", width: "", depth: "", unit: "in", price: "", description: "" });
   const [files, setFiles] = useState<File[]>([]);
   const [progress, setProgress] = useState<string | null>(null);
@@ -285,7 +309,7 @@ function NewWorkForm({ show, onDone, onCancel }: { show: OpenShow; onDone: (titl
         const { workId, slots } = await prepareUploads(files.length);
         const images = await uploadPhotos(files, slots, setProgress);
         setProgress("Saving…");
-        const r = await submitNewWork({ workId, ...f, images, showId: show.id });
+        const r = await submitNewWork({ workId, ...f, images, showId: show?.id ?? null });
         if (!r.ok) throw new Error(r.error);
         onDone(f.title.trim());
       } catch (e) {
@@ -361,7 +385,7 @@ function NewWorkForm({ show, onDone, onCancel }: { show: OpenShow; onDone: (titl
           Cancel
         </button>
         <button onClick={submit} disabled={pending} className="rounded-md bg-ink px-4 py-1.5 text-sm text-white disabled:opacity-50">
-          {pending ? "Submitting…" : `Submit for ${show.name}`}
+          {pending ? "Submitting…" : show ? `Submit for ${show.name}` : "Add to my works"}
         </button>
       </div>
     </div>

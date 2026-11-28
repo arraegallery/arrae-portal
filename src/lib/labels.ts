@@ -67,7 +67,8 @@ async function loadStoreVariants(): Promise<StoreVariant[]> {
 
 export type ShowLabels = { showName: string; rows: LabelRow[]; shopifyChecked: boolean; source: "selected" | "sandbox" };
 
-export async function buildShowLabels(showId: string): Promise<ShowLabels | null> {
+/** Labels for a show; with `artistId`, only that artist's works in it (for the artist page). */
+export async function buildShowLabels(showId: string, artistId?: string): Promise<ShowLabels | null> {
   const [show] = await db.select({ id: s.shows.id, name: s.shows.name }).from(s.shows).where(eq(s.shows.id, showId));
   if (!show) return null;
 
@@ -101,7 +102,8 @@ export async function buildShowLabels(showId: string): Promise<ShowLabels | null
     })
     .from(s.works)
     .leftJoin(s.artists, eq(s.artists.id, s.works.artistId))
-    .where(inArray(s.works.id, workIds));
+    .where(artistId ? and(inArray(s.works.id, workIds), eq(s.works.artistId, artistId)) : inArray(s.works.id, workIds));
+  if (works.length === 0) return { showName: show.name, rows: [], shopifyChecked: false, source };
 
   const earlier = await db
     .select({ workId: s.showWorks.workId, show: s.shows.name })
